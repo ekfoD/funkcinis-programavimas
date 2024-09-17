@@ -88,6 +88,11 @@ createMelody:
 
 <terminate> ::= "stop"
 
+<sign> ::= "-" | "+"
+
+<digit> ::= "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+
+<smallInteger> ::= <sign> <digit>
 
 <melody> ::= <note> | <compound>
 
@@ -95,7 +100,7 @@ createMelody:
 
 <compound> ::= "melody" <melody>+
 
-(rekursijos pvz.: melodymelodymelodymelodyF4G16C4melodymelodyC2E16melodyF4)
+(sugeneruotas rekursijos pvz. iš svetainės: melodymelodymelodymelodyF4G16C4melodymelodyC2E16melodyF4)
 
 <createMelody> ::= "createMelody" <melodyID> <addNotes>
 
@@ -113,6 +118,6 @@ createMelody:
 <readMelody> ::= <melodyID>
 
 
-<transposeMelody> ::= <melodyID> <transposeChoice>
+<transposeMelody> ::= <melodyID> <smallInteger>
 
-<changeMelodyTempo> ::= <melodyID> <integer>
+<changeMelodyTempo> ::= <melodyID> <smallInteger>
