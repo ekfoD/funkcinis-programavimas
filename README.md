@@ -4,13 +4,13 @@
 theme => music
 
 this app will be for producers who want to create music. possible actions:
-createMelody/editMelody/deleteMelody/readMelody/transposeMelody/changeMelodyTempo:
+melodyList/readMelody/deleteMelody/editMelody/transposeMelody/changeMelodyTempo/createMelody:
 
 
 ### Function descriptions:
 
 melodyList:
-    input-- <nothing>
+    input-- 
     output-- <melodies printed seperated by \\n>
 
 readMelody:
@@ -25,9 +25,8 @@ editMelody:
     input-- <melodyID>
     output-- <that melody notes and every note has a number>    
     input-- <noteID>
-    output-- <message that successfully edited and do you want to continue?>
-    input-- <yes or no>
-    ...
+    output-- <editted melody>
+    input-- <stop or note ID>
 
 transposeMelody:
     input-- <melodyID> <how many notes you want to transpose (if pitch up, positive number, pitch down - negative)>
@@ -38,11 +37,9 @@ changeMelodyTempo:
     output-- <melody with changed tempo>
 
 createMelody:
-    input-- <melodyID>
-    input-- <note>
-    output-- <do you need to add more notes?>
-    input-- <yes or no>
-    ...
+    input-- <melodyID> (if it matches with already existing melodyID, it will overwrite that)
+    input-- <terminate> | <note>
+    output-- <melody> (if you typed terminate, it stops) 
 
 ### Function examples:
 
@@ -60,10 +57,10 @@ deleteMelody:
 
 editMelody:
     input-- 1
-    output-- 1. A4, 2. G16 3. B1
+    output-- 1. A4, 2. G16, 3. B1
     input-- 2 C2
-    output-- "successfully edited! edit more?"
-    input-- no
+    output-- 1. A4, 2. C2, 3. B1
+    input-- stop
 
 transposeMelody:
     input-- 1 2
@@ -76,18 +73,46 @@ changeMelodyTempo:
 createMelody:
     input-- 1
     input-- B4
-    output-- "do you want to add more notes?"
-    input-- no
+    output-- B4
+    input-- stop
 
 ## my BNF:
-
-<melody> ::= <note> | <note> <melodyID>
-
-<note> ::= <pitch> <duration>
-
-<melodyID> ::= "1 - 99"
 
 <pitch> ::= "C" | "D" | "E" | "F" | "G" | "A" | "B"
 
 <duration> ::= "1" | "2" | "4" | "8" | "16"
 
+<melodyID> ::= "1" | "2" | ... | "99"
+
+<noteID> ::= "1" | "2" | ... | "99"
+
+<terminate> ::= "stop"
+
+
+<melody> ::= <note> | <compound>
+
+<note> ::= <pitch> <duration> 
+
+<compound> ::= "melody" <melody>+
+
+(rekursijos pvz.: melodymelodymelodymelodyF4G16C4melodymelodyC2E16melodyF4)
+
+<createMelody> ::= "createMelody" <melodyID> <addNotes>
+
+<addNotes> ::= <terminate> | <note> <addNotes>
+
+
+
+<editMelody> ::= "editMelody" <melodyID> <editNotes> 
+
+<editNotes> ::= <terminate> | <noteID> <note> <editNotes>
+
+
+<deleteMelody> ::= <melodyID>
+
+<readMelody> ::= <melodyID>
+
+
+<transposeMelody> ::= <melodyID> <transposeChoice>
+
+<changeMelodyTempo> ::= <melodyID> <integer>
