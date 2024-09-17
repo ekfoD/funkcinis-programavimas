@@ -1,8 +1,9 @@
 module Lib1
-    ( completions
-    ) where
+  ( completions,
+  )
+where
 
 -- | This function returns a list of words
 -- to be autocompleted in your program's repl.
 completions :: [String]
-completions = ["Melody"]
+completions = ["melodyList", "readMelody", "editMelody", "transposeMelody", "changeMelodyTempo", "createMelody"]
