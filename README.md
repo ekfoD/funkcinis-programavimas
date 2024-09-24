@@ -42,7 +42,7 @@ deleteMelody:
 editMelody:
     input-- <melodyID>
     output-- <that melody notes and every note has a number>    
-    input-- <noteID>
+    input-- <noteID> <pitch> <duration>
     output-- <editted melody>
     input-- <stop or note ID>
 
