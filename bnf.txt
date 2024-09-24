@@ -20,7 +20,7 @@
 
 <note> ::= <pitch> <duration> 
 
-<compound> ::= "melody" <melody>+
+<compound> ::= "(" "melody" <melody> ")"
 
 (sugeneruotas rekursijos pvz. iš svetainės: melodymelodymelodymelodyF4G16C4melodymelodyC2E16melodyF4)
 
