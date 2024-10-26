@@ -29,35 +29,34 @@ melodyList/readMelody/deleteMelody/editMelody/transposeMelody/changeMelodyTempo/
 ```
 melodyList:
     input-- 
-    output-- <melodies printed seperated by \\n>
+    output-- (melodies printed seperated by \\n)
 
 readMelody:
     input-- <melodyID>
-    output-- <melody printed>
+    output-- (melody printed)
 
 deleteMelody:
     input-- <melodyID>
-    output-- <melody deleted. message that successful>
+    output-- (melody deleted. message that successful)
 
 editMelody:
     input-- <melodyID>
-    output-- <that melody notes and every note has a number>    
-    input-- <noteID> <pitch> <duration>
-    output-- <editted melody>
-    input-- <stop or note ID>
+    output-- (that melody notes and every note has a number)
+    input-- <editNotes>
+    output-- (editted melody)
 
 transposeMelody:
-    input-- <melodyID> <how many notes you want to transpose (if pitch up, positive number, pitch down - negative)>
-    output-- <transposed melody>
+    input-- <melodyID> <smallInteger> (if pitch up, positive number, pitch down - negative)
+    output-- (transposed melody)
 
 changeMelodyTempo:
-    input-- <melodyID> <what tempo you want to change (number and its sign means in what side and how much should tempos shift)>
-    output-- <melody with changed tempo>
+    input-- <melodyID> <smallInteger> (number and its sign means in what side and how much should tempos shift)
+    output-- (melody with changed tempo)
 
 createMelody:
-    input-- <melodyID> (if it matches with already existing melodyID, it will overwrite that)
-    input-- <terminate> | <note>
-    output-- <melody> (if you typed terminate, it stops) 
+    (if it matches with already existing melodyID, it will overwrite that)
+    input-- <melodyID> <addNotes>   (if you typed terminate, it stops) 
+    output-- (melody created)
 ```
 
 ### Function examples:
@@ -77,20 +76,26 @@ createMelody:
 `editMelody`:
     input-- 1
     output-- 1. A4, 2. G16, 3. B1
-    input-- 2 C2
-    output-- 1. A4, 2. C2, 3. B1
-    input-- stop
+    input-- 2 C2 3 A1 stop
+    output-- 1. A4, 2. C2, 3. A1
 
 `transposeMelody`:
-    input-- 1 2
+    input-- 1 +2
     output-- C4 C16 F1 A4
 
 `changeMelodyTempo`:
-    input-- 1 1
+    input-- 1 -1
     output-- C8 C16 F2 A8
 
 `createMelody`:
-    input-- 1
-    input-- B4
-    output-- B4
-    input-- stop
+    input-- createMelody 1 B4 C1 (melody F2 F8) stop
+    output-- "melody created"
+
+
+
+### Small change to BNF and how app works:
+
+1. BNF changed -> `<addNotes> ::= <terminate> | <note> <addNotes>` to `<addNotes> ::= <terminate> | <melody> <addNotes>`
+    in order so i could implement recursion with my parsers
+
+2. Changed README.md -> clarified some parts and updated so it would represent updated BNF
