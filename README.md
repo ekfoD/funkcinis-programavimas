@@ -75,9 +75,9 @@ createMelody:
 
 `editMelody`:
     input-- 1
-    output-- 1. A4, 2. G16, 3. B1
-    input-- 2 C2 3 A1 stop
-    output-- 1. A4, 2. C2, 3. A1
+    output-- 1. A4, 2. G16F2, 3. F4
+    input-- 2 C2G2  stop
+    output-- A4(C2(G16F2)G2)
 
 `transposeMelody`:
     input-- 1 +2
@@ -99,3 +99,8 @@ createMelody:
     in order so i could implement recursion with my parsers
 
 2. Changed README.md -> clarified some parts and updated so it would represent updated BNF
+
+
+### Small change to melody editing:
+
+1. In edit section, now you choose which melody part you want to change, not individual notes

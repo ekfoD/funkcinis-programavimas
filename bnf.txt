@@ -6,7 +6,7 @@
 
 <melodyID> ::= "1" | "2" | ... | "99"
 
-<noteID> ::= "1" | "2" | ... | "99"
+<melodyPartID> ::= "1" | "2" | ... | "99"
 
 <terminate> ::= "stop"
 
@@ -30,7 +30,7 @@
 
 <editMelody> ::= "editMelody" <melodyID> <editNotes> 
 
-<editNotes> ::= <terminate> | <noteID> <note> <editNotes>
+<editNotes> ::= <terminate> | <melodyPartID> <melody> <editNotes>
 
 
 <deleteMelody> ::= <melodyID>
