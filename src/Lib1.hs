@@ -6,4 +6,4 @@ where
 -- | This function returns a list of words
 -- to be autocompleted in your program's repl.
 completions :: [String]
-completions = ["melodyList", "readMelody", "editMelody", "transposeMelody", "changeMelodyTempo", "createMelody"]
+completions = ["melodyList", "readMelody", "editMelody", "transposeMelody", "changeTempoMelody", "createMelody", "deleteMelody"]
