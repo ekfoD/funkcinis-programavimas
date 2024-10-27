@@ -75,8 +75,8 @@ createMelody:
 
 `editMelody`:
     input-- 1
-    output-- 1. A4, 2. G16, 3. F4, 4. F2 -- A4(G16(F4)F2)
-    input-- 2 C2G2  stop
+    output-- 1. A4, 2. G16, 3. F4, 4. F2                            <!-- A4(G16(F4)F2) -->
+    input-- 2 C2G2 stop
     output-- A4(C2G2(F4)F2)
 
 `transposeMelody`:
