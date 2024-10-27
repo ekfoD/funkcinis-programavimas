@@ -250,10 +250,46 @@ parseMelodyList input =
 
 -- Helpers
 -- HELPER PARSERS
+-- for edit command
+parseSingleEditCommand :: Parser (Int, [Melody])
+parseSingleEditCommand =
+  and3
+    (\id _ melodies -> (id, melodies))
+    parseId
+    parseWhiteSpace
+    parseFirstLayerMelody
+
+-- for edit command
+parseFirstLayerMelody :: Parser [Melody]
+parseFirstLayerMelody input =
+  case parseNote input of
+    Right (note, rest) ->
+      if null rest || (not (null rest) && C.isSpace (head rest))
+        then Right ([SingleNote note], rest)
+        else case parseFirstLayerMelody rest of
+          Right (melodies, rest') -> Right (SingleNote note : melodies, rest')
+          Left err -> Left err
+    Left err -> Left err
+
+parseWhiteSpace :: Parser Char
+parseWhiteSpace (c : cs)
+  | C.isSpace c = Right (c, cs)
+  | otherwise = Left ("Expected a white space, but found: " ++ [c])
+parseWhiteSpace [] = Left "Unexpected end of input while parsing white space"
+
 parseString :: String -> Parser String
 parseString prefix input
   | prefix `L.isPrefixOf` input = Right (prefix, drop (length prefix) input)
-  | otherwise = Left "Doesnt match expected output."
+  | otherwise = Left ("Cannot find -" ++ prefix ++ "- in provided input")
+
+or2 :: Parser a -> Parser a -> Parser a
+or2 a b = \input ->
+  case a input of
+    Right r1 -> Right r1
+    Left e1 ->
+      case b input of
+        Right r2 -> Right r2
+        Left e2 -> Left (e1 ++ ", " ++ e2)
 
 and2 :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
 and2 c a b = \input ->
@@ -302,33 +338,3 @@ and5 f p1 p2 p3 p4 p5 = \input ->
             Left e3 -> Left e3
         Left e2 -> Left e2
     Left e1 -> Left e1
-
-and7 :: (a -> b -> c -> d -> e -> f -> g -> h) -> Parser a -> Parser b -> Parser c -> Parser d -> Parser e -> Parser f -> Parser g -> Parser h
-and7 f a b c d e f' g = \input ->
-  case and4 (\v1 v2 v3 v4 -> (v1, v2, v3, v4)) a b c d input of
-    Right ((v1, v2, v3, v4), r4) ->
-      case and3 (\v5 v6 v7 -> (v5, v6, v7)) e f' g r4 of
-        Right ((v5, v6, v7), r7) -> Right (f v1 v2 v3 v4 v5 v6 v7, r7)
-        Left e -> Left e
-    Left e -> Left e
-
-or2 :: Parser a -> Parser a -> Parser a
-or2 a b = \input ->
-  case a input of
-    Right r1 -> Right r1
-    Left e1 ->
-      case b input of
-        Right r2 -> Right r2
-        Left e2 -> Left (e1 ++ ", " ++ e2)
-
-many :: Parser a -> Parser [a]
-many p = many' p []
-  where
-    many' p' acc = \input ->
-      case p' input of
-        Left _ -> Right (acc, input)
-        Right (v, r) -> many' p' (acc ++ [v]) r
-
-numberToInt :: [Int] -> Int
-numberToInt [] = 0
-numberToInt (x : xs) = x * 10 ^ length xs + numberToInt xs
