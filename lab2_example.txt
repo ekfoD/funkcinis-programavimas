@@ -1,0 +1,11 @@
+Welcome! Press [TAB] for auto completion.
+>>> createMelody 69 A1A2(B2B4)(C4C8(D16F16)) stop
+Created melody 69
+>>> View
+State: Current State:
+melodies:
+SingleNote (Note F Half)
+SingleNote (Note A Quarter)
+CompoundMelody [SingleNote (Note A Whole),SingleNote (Note A Half),CompoundMelody [SingleNote (Note B Half),SingleNote (Note B Quarter)],CompoundMelody [SingleNote (Note C Quarter),SingleNote (Note C Eighth),CompoundMelody [SingleNote (Note D Sixteenth),SingleNote (Note F Sixteenth)]]]
+
+>>> 
