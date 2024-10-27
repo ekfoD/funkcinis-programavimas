@@ -83,30 +83,45 @@ parseQuery input =
 
 -- | An entity which represents your program's state. Currently it has no constructors but you can introduce as many as needed.
 data State = State
-  { pitches :: [Pitch],
-    durations :: [Duration]
+  { melodies :: [Melody]
   }
   deriving (Show, Eq)
 
 viewState :: State -> String
-viewState (State pitches durations) =
+viewState (State melodies) =
   "Current State:\n"
-    ++ "pitches:\n"
-    ++ unlines (map show pitches)
-    ++ "durations:\n"
-    ++ unlines (map show durations)
+    ++ "melodies:\n"
+    ++ unlines (map show melodies)
 
 -- | Creates an initial program's state. It is called once when the program starts.
 emptyState :: State
-emptyState = error "Not implemented 1"
+emptyState =
+  State
+    { melodies = [SingleNote (Note F Half), SingleNote (Note A Quarter)]
+    }
 
 -- | Updates a state according to a query. This allows your program to share the state between repl iterations.
 -- Right contains an optional message to print and an updated program's state.
 stateTransition :: State -> Query -> Either String (Maybe String, State)
 stateTransition state query = case query of
+  CreateMelody int melody ->
+    let newState = state {melodies = melodies state ++ [melody]}
+     in Right (Just $ "Created melody " ++ show int, newState)
+  ReadMelody int ->
+    Right (Just $ "Read melody " ++ show int, state)
+  ChangeTempoMelody int smallInteger ->
+    Right (Just $ "Changed tempo of melody " ++ show int ++ " by " ++ show smallInteger, state)
+  TransposeMelody int smallInteger ->
+    Right (Just $ "Transposed melody " ++ show int ++ " by " ++ show smallInteger, state)
+  DeleteMelody int ->
+    let newState = state {melodies = filter (\(SingleNote (Note _ _)) -> True) (melodies state)}
+     in Right (Just $ "Deleted melody " ++ show int, newState)
+  EditMelody int ->
+    Right (Just $ "Edited melody " ++ show int, state)
+  MelodyList ->
+    Right (Just $ viewState state, state)
   View ->
     Right (Just $ "State: " ++ viewState state, state)
-  _ -> Left "Unknown query"
 
 -- PARSERS FOR BNF THINGS
 -- Pitch
