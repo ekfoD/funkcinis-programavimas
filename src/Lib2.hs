@@ -168,6 +168,86 @@ parseSign input = case input of
 parseSmallInteger :: Parser SmallInteger
 parseSmallInteger = and2 SmallInteger parseSign parseDigit
 
+-- ACTIONS
+
+-- CreateMelody
+parseCreateMelody :: Parser Query
+parseCreateMelody =
+  and5
+    (\_ id _ melodies _ -> CreateMelody id (CompoundMelody melodies))
+    (parseString "createMelody ")
+    parseId
+    parseWhiteSpace
+    parseMelodies
+    (parseString " stop")
+
+-- EditMelody
+parseEditMelody :: Parser Query
+parseEditMelody =
+  and2
+    (\_ id -> EditMelody id)
+    (parseString "editMelody ")
+    parseId
+
+-- Parse the edit command
+parseEditCommand :: Parser [(Int, [Melody])]
+parseEditCommand input =
+  case parseSingleEditCommand input of
+    Right (edit, rest) ->
+      case parseString " stop" rest of
+        Right (_, rest) -> Right ([edit], rest)
+        Left _ ->
+          case parseWhiteSpace rest of -- atskiriam edit "skiemenis" tarpu
+            Right (edits, rest') ->
+              case parseEditCommand rest' of
+                Right (edits, rest'') -> Right (edit : edits, rest'')
+                Left err -> Left err
+            Left err -> Left err
+    Left err -> Left err
+
+-- DeleteMelody
+parseDeleteMelody :: Parser Query
+parseDeleteMelody =
+  and2
+    (\_ id -> DeleteMelody id)
+    (parseString "deleteMelody ")
+    parseId
+
+-- TransposeMelody
+parseTransposeMelody :: Parser Query
+parseTransposeMelody =
+  and4
+    (\_ id _ signedNumb -> TransposeMelody id signedNumb)
+    (parseString "transposeMelody ")
+    parseId
+    parseWhiteSpace
+    parseSmallInteger
+
+-- ChangeTempoMelody
+parseChangeTempoMelody :: Parser Query
+parseChangeTempoMelody =
+  and4
+    (\_ id _ signedNumb -> ChangeTempoMelody id signedNumb)
+    (parseString "changeTempoMelody ")
+    parseId
+    parseWhiteSpace
+    parseSmallInteger
+
+-- ReadMelody
+parseReadMelody :: Parser Query
+parseReadMelody =
+  and2
+    (\_ id -> ReadMelody id)
+    (parseString "readMelody ")
+    parseId
+
+-- MelodyList
+parseMelodyList :: Parser Query
+parseMelodyList input =
+  case parseString "melodyList " input of
+    Right (_, rest) -> Right (MelodyList, rest)
+    Left err -> Left err
+
 -- Helpers
 -- HELPER PARSERS
 parseString :: String -> Parser String
