@@ -2,10 +2,32 @@
 
 module Lib2
   ( Query (..),
+    Pitch (..),
+    Duration (..),
+    Sign (..),
+    SmallInteger (..),
+    Note (..),
+    Melody (..),
     parseQuery,
     State (..),
     emptyState,
     stateTransition,
+    parsePitch,
+    parseDuration,
+    parseNote,
+    parseSign,
+    parseId,
+    parseDigit,
+    parseCompound,
+    parseMelody,
+    parseMelodies,
+    parseCreateMelody,
+    parseReadMelody,
+    parseTransposeMelody,
+    parseChangeTempoMelody,
+    parseDeleteMelody,
+    parseEditMelody,
+    parseString,
   )
 where
 
@@ -33,21 +55,31 @@ data Query
   | TransposeMelody Int SmallInteger
   | DeleteMelody Int
   | EditMelody Int
-  | EditCommand Int Melody
   | MelodyList
   | View
   deriving (Show, Eq) -- data constructors must start with an uppercase letter or a colon (:)!
 
 -- | Parses user's input.
+-- The function must have tests.
 parseQuery :: String -> Either String Query
 parseQuery input =
-  case parseDuration input of
+  case parseCreateMelody input of
     Right (query, _) -> Right query
-    Left _ -> case parsePitch input of
-      Right (pitch, _) -> Right (PitchQuery pitch)
-      Left _ -> case (parseString "View") input of
-        Right (_, rest) -> Right View
-        Left e -> Left "Error, command doesnt match any known query"
+    Left _ -> case parseReadMelody input of
+      Right (query, _) -> Right query
+      Left _ -> case parseChangeTempoMelody input of
+        Right (query, _) -> Right query
+        Left _ -> case parseTransposeMelody input of
+          Right (query, _) -> Right query
+          Left _ -> case parseDeleteMelody input of
+            Right (query, _) -> Right query
+            Left _ -> case parseEditMelody input of
+              Right (query, _) -> Right query
+              Left _ -> case parseMelodyList input of
+                Right (query, _) -> Right query
+                Left _ -> case parseString "View" input of
+                  Right (_, _) -> Right View
+                  Left _ -> Left "Error, command doesn't match any known query."
 
 -- | An entity which represents your program's state. Currently it has no constructors but you can introduce as many as needed.
 data State = State
@@ -174,7 +206,7 @@ parseSmallInteger = and2 SmallInteger parseSign parseDigit
 parseCreateMelody :: Parser Query
 parseCreateMelody =
   and5
-    (\_ id _ melodies _ -> CreateMelody id (CompoundMelody melodies))
+    (\_ melodyId _ melodies _ -> CreateMelody melodyId (CompoundMelody melodies))
     (parseString "createMelody ")
     parseId
     parseWhiteSpace
@@ -185,7 +217,7 @@ parseCreateMelody =
 parseEditMelody :: Parser Query
 parseEditMelody =
   and2
-    (\_ id -> EditMelody id)
+    (\_ melodyId -> EditMelody melodyId)
     (parseString "editMelody ")
     parseId
 
@@ -209,7 +241,7 @@ parseEditCommand input =
 parseDeleteMelody :: Parser Query
 parseDeleteMelody =
   and2
-    (\_ id -> DeleteMelody id)
+    (\_ melodyId -> DeleteMelody melodyId)
     (parseString "deleteMelody ")
     parseId
 
@@ -217,7 +249,7 @@ parseDeleteMelody =
 parseTransposeMelody :: Parser Query
 parseTransposeMelody =
   and4
-    (\_ id _ signedNumb -> TransposeMelody id signedNumb)
+    (\_ melodyId _ signedNumb -> TransposeMelody melodyId signedNumb)
     (parseString "transposeMelody ")
     parseId
     parseWhiteSpace
@@ -227,7 +259,7 @@ parseTransposeMelody =
 parseChangeTempoMelody :: Parser Query
 parseChangeTempoMelody =
   and4
-    (\_ id _ signedNumb -> ChangeTempoMelody id signedNumb)
+    (\_ melodyId _ signedNumb -> ChangeTempoMelody melodyId signedNumb)
     (parseString "changeTempoMelody ")
     parseId
     parseWhiteSpace
@@ -237,7 +269,7 @@ parseChangeTempoMelody =
 parseReadMelody :: Parser Query
 parseReadMelody =
   and2
-    (\_ id -> ReadMelody id)
+    (\_ melodyId -> ReadMelody melodyId)
     (parseString "readMelody ")
     parseId
 
@@ -254,7 +286,7 @@ parseMelodyList input =
 parseSingleEditCommand :: Parser (Int, [Melody])
 parseSingleEditCommand =
   and3
-    (\id _ melodies -> (id, melodies))
+    (\melodyId _ melodies -> (melodyId, melodies))
     parseId
     parseWhiteSpace
     parseFirstLayerMelody
@@ -271,25 +303,18 @@ parseFirstLayerMelody input =
           Left err -> Left err
     Left err -> Left err
 
+-- white space
 parseWhiteSpace :: Parser Char
 parseWhiteSpace (c : cs)
   | C.isSpace c = Right (c, cs)
   | otherwise = Left ("Expected a white space, but found: " ++ [c])
 parseWhiteSpace [] = Left "Unexpected end of input while parsing white space"
 
+-- string parser
 parseString :: String -> Parser String
 parseString prefix input
   | prefix `L.isPrefixOf` input = Right (prefix, drop (length prefix) input)
   | otherwise = Left ("Cannot find -" ++ prefix ++ "- in provided input")
-
-or2 :: Parser a -> Parser a -> Parser a
-or2 a b = \input ->
-  case a input of
-    Right r1 -> Right r1
-    Left e1 ->
-      case b input of
-        Right r2 -> Right r2
-        Left e2 -> Left (e1 ++ ", " ++ e2)
 
 and2 :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
 and2 c a b = \input ->
