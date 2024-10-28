@@ -31,10 +31,17 @@ module Lib2
   )
 where
 
+-- type: Creates a type synonym (alias) for an existing type. It does not create a new type.
+-- data: Defines a new algebraic data type with its own constructors. It creates a new type.
+
 import qualified Data.Char as C
 import qualified Data.List as L
 
 type Parser a = String -> Either String (a, String)
+
+type MelodyID = Int
+
+type MelodyStore = [(MelodyID, Melody)]
 
 data Pitch = A | B | C | D | E | F | G deriving (Show, Eq)
 
@@ -78,7 +85,7 @@ parseQuery input =
 
 -- | An entity which represents your program's state. Currently it has no constructors but you can introduce as many as needed.
 data State = State
-  { melodies :: [Melody]
+  { melodies :: MelodyStore
   }
   deriving (Show, Eq)
 
@@ -92,7 +99,10 @@ viewState (State melodies) =
 emptyState :: State
 emptyState =
   State
-    { melodies = [SingleNote (Note F Half), SingleNote (Note A Quarter)]
+    { melodies =
+        [ (1, CompoundMelody [SingleNote (Note F Half), SingleNote (Note A Quarter)]),
+          (2, CompoundMelody [SingleNote (Note G Half), SingleNote (Note E Sixteenth)])
+        ]
     }
 
 -- | Updates a state according to a query. This allows your program to share the state between repl iterations.
@@ -100,7 +110,8 @@ emptyState =
 stateTransition :: State -> Query -> Either String (Maybe String, State)
 stateTransition state query = case query of
   CreateMelody int melody ->
-    let newState = state {melodies = melodies state ++ [melody]}
+    let newMelody = (int, melody)
+        newState = state {melodies = melodies state ++ [newMelody]}
      in Right (Just $ "Created melody " ++ show int, newState)
   ReadMelody int ->
     Right (Just $ "Read melody " ++ show int, state)
@@ -109,7 +120,7 @@ stateTransition state query = case query of
   TransposeMelody int smallInteger ->
     Right (Just $ "Transposed melody " ++ show int ++ " by " ++ show smallInteger, state)
   DeleteMelody int ->
-    let newState = state {melodies = filter (\(SingleNote (Note _ _)) -> True) (melodies state)}
+    let newState = state {melodies = filter (\(mid, _) -> mid /= int) (melodies state)}
      in Right (Just $ "Deleted melody " ++ show int, newState)
   EditMelody int ->
     Right (Just $ "Edited melody " ++ show int, state)
