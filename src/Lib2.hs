@@ -60,26 +60,21 @@ data Query
   deriving (Show, Eq) -- data constructors must start with an uppercase letter or a colon (:)!
 
 -- | Parses user's input.
--- The function must have tests.
 parseQuery :: String -> Either String Query
 parseQuery input =
-  case parseCreateMelody input of
-    Right (query, _) -> Right query
-    Left _ -> case parseReadMelody input of
-      Right (query, _) -> Right query
-      Left _ -> case parseChangeTempoMelody input of
+  let parsers =
+        [ parseCreateMelody,
+          parseReadMelody,
+          parseChangeTempoMelody,
+          parseTransposeMelody,
+          parseDeleteMelody,
+          parseEditMelody,
+          parseMelodyList,
+          parseView
+        ]
+   in case or' parsers input of
         Right (query, _) -> Right query
-        Left _ -> case parseTransposeMelody input of
-          Right (query, _) -> Right query
-          Left _ -> case parseDeleteMelody input of
-            Right (query, _) -> Right query
-            Left _ -> case parseEditMelody input of
-              Right (query, _) -> Right query
-              Left _ -> case parseMelodyList input of
-                Right (query, _) -> Right query
-                Left _ -> case parseString "View" input of
-                  Right (_, _) -> Right View
-                  Left _ -> Left "Error, command doesn't match any known query."
+        Left _ -> Left "Error! could not parse that"
 
 -- | An entity which represents your program's state. Currently it has no constructors but you can introduce as many as needed.
 data State = State
@@ -330,6 +325,30 @@ parseString :: String -> Parser String
 parseString prefix input
   | prefix `L.isPrefixOf` input = Right (prefix, drop (length prefix) input)
   | otherwise = Left ("Cannot find -" ++ prefix ++ "- in provided input")
+
+-- Helper function to combine a list of parsers
+or' :: [Parser a] -> Parser a
+or' [] = \_ -> Left "No parsers succeeded"
+or' (p : ps) = \input ->
+  case p input of
+    Right r -> Right r
+    Left _ -> or' ps input
+
+-- | Parses the "View" command. (cant directly do it since parseString returns String, not Query and direct casting is impossible in Haskell)
+parseView :: Parser Query
+parseView = \input ->
+  case parseString "View" input of
+    Right (_, rest) -> Right (View, rest)
+    Left err -> Left err
+
+or2 :: Parser a -> Parser a -> Parser a
+or2 a b = \input ->
+  case a input of
+    Right r1 -> Right r1
+    Left e1 ->
+      case b input of
+        Right r2 -> Right r2
+        Left e2 -> Left (e1 ++ ", " ++ e2)
 
 and2 :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
 and2 c a b = \input ->
