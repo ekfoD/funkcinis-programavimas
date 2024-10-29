@@ -112,16 +112,27 @@ stateTransition state query = case query of
   CreateMelody int melody ->
     let newMelody = (int, melody)
         newState = state {melodies = melodies state ++ [newMelody]}
-     in Right (Just $ "Created melody " ++ show int, newState)
+     in Right (Just $ "Created melody " ++ show int, newState) -- converts value to its string representation (nes Show inheritina)
   ReadMelody int ->
-    Right (Just $ "Read melody " ++ show int, state)
+    case lookupMelody int state of
+      Right m -> Right (Just $ show int ++ " melody: " ++ show m, state)
+      Left _ -> Left "Melody not found"
   ChangeTempoMelody int smallInteger ->
     Right (Just $ "Changed tempo of melody " ++ show int ++ " by " ++ show smallInteger, state)
   TransposeMelody int smallInteger ->
     Right (Just $ "Transposed melody " ++ show int ++ " by " ++ show smallInteger, state)
   DeleteMelody int ->
-    let newState = state {melodies = filter (\(mid, _) -> mid /= int) (melodies state)}
-     in Right (Just $ "Deleted melody " ++ show int, newState)
+    case lookupMelody int state of
+      Right _ ->
+        let newState =
+              state
+                { melodies =
+                    filter
+                      (\(mid, _) -> mid /= int) -- filterina pagal IDs. visi elementai, kuriu ID != musu irasytam
+                      (melodies state) -- filter yra applyinama kiekvienam elemente in the list (melodies state)
+                }
+         in Right (Just $ "Deleted melody " ++ show int, newState)
+      Left _ -> Left "Could not find the melody"
   EditMelody int ->
     Right (Just $ "Edited melody " ++ show int, state)
   MelodyList ->
@@ -242,6 +253,11 @@ parseEditMelody =
     (parseString "editMelody ")
     parseId
 
+-- F2A2(G2(B4)A4)
+
+-- 1 F2A2 2 G2 3 B4 4 A4
+-- 2 C2G16 4 A4B8 stop
+-- F2A2(C2G16(B4)A4B8)
 -- Parse the edit command
 parseEditCommand :: Parser [(Int, [Melody])]
 parseEditCommand input =
@@ -339,11 +355,19 @@ parseString prefix input
 
 -- Helper function to combine a list of parsers
 or' :: [Parser a] -> Parser a
-or' [] = \_ -> Left "No parsers succeeded"
-or' (p : ps) = \input ->
+or' [] _ = Left "No parsers succeeded"
+or' (p : ps) input =
   case p input of
     Right r -> Right r
     Left _ -> or' ps input
+
+-- lookupMelody helper func
+lookupMelody :: Int -> State -> Either String Melody
+lookupMelody input state =
+  let melody = lookup input (melodies state)
+   in case melody of
+        Just m -> Right m
+        Nothing -> Left "Melody not found"
 
 -- | Parses the "View" command. (cant directly do it since parseString returns String, not Query and direct casting is impossible in Haskell)
 parseView :: Parser Query
@@ -351,15 +375,6 @@ parseView = \input ->
   case parseString "View" input of
     Right (_, rest) -> Right (View, rest)
     Left err -> Left err
-
-or2 :: Parser a -> Parser a -> Parser a
-or2 a b = \input ->
-  case a input of
-    Right r1 -> Right r1
-    Left e1 ->
-      case b input of
-        Right r2 -> Right r2
-        Left e2 -> Left (e1 ++ ", " ++ e2)
 
 and2 :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
 and2 c a b = \input ->
