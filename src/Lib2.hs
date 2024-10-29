@@ -110,9 +110,11 @@ emptyState =
 stateTransition :: State -> Query -> Either String (Maybe String, State)
 stateTransition state query = case query of
   CreateMelody int melody ->
-    let newMelody = (int, melody)
-        newState = state {melodies = melodies state ++ [newMelody]}
-     in Right (Just $ "Created melody " ++ show int, newState) -- converts value to its string representation (nes Show inheritina)
+    case lookupMelody int state of
+      Right _ -> Left "Melody with that ID already exists"
+      Left _ -> let newMelody = (int, melody)
+                    newState = state {melodies = melodies state ++ [newMelody]}
+                in Right (Just $ "Created melody " ++ show int, newState) -- converts value to its string representation (nes Show inheritina)
   ReadMelody int ->
     case lookupMelody int state of
       Right m -> Right (Just $ show int ++ " melody: " ++ show m, state)
