@@ -90,10 +90,10 @@ data State = State
   deriving (Show, Eq)
 
 viewState :: State -> String
-viewState (State melodies) =
+viewState (State subMelodies) =
   "Current State:\n"
     ++ "melodies:\n"
-    ++ unlines (map show melodies)
+    ++ unlines (map show subMelodies)
 
 -- | Creates an initial program's state. It is called once when the program starts.
 emptyState :: State
@@ -118,9 +118,14 @@ stateTransition state query = case query of
   ReadMelody int ->
     case lookupMelody int state of
       Right m -> Right (Just $ show int ++ " melody: " ++ show m, state)
-      Left _ -> Left "Melody not found"
+      Left err -> Left err
   ChangeTempoMelody int smallInteger ->
-    Right (Just $ "Changed tempo of melody " ++ show int ++ " by " ++ show smallInteger, state)
+    case lookupMelody int state of
+      Right m -> 
+        let updatedMelody = updateMelodyTempo m smallInteger
+            newState = state { melodies = map (\(mid, mel) -> if mid == int then (mid, updatedMelody) else (mid, mel)) (melodies state) } -- ideda updated melody
+        in Right (Just $ "Changed tempo of melody " ++ show int ++ " by " ++ show smallInteger, newState)
+      Left err -> Left err
   TransposeMelody int smallInteger ->
     Right (Just $ "Transposed melody " ++ show int ++ " by " ++ show smallInteger, state)
   DeleteMelody int ->
@@ -134,7 +139,7 @@ stateTransition state query = case query of
                       (melodies state) -- filter yra applyinama kiekvienam elemente in the list (melodies state)
                 }
          in Right (Just $ "Deleted melody " ++ show int, newState)
-      Left _ -> Left "Could not find the melody"
+      Left err -> Left err
   EditMelody int ->
     Right (Just $ "Edited melody " ++ show int, state)
   MelodyList ->
@@ -191,9 +196,9 @@ parseNote = and2 Note parsePitch parseDuration
 parseCompound :: Parser Melody
 parseCompound ('(' : cs) =
   case parseMelodies cs of
-    Right (melodies, rest1) ->
+    Right (subMelodies, rest1) ->
       case rest1 of
-        (')' : rest2) -> Right (CompoundMelody melodies, rest2)
+        (')' : rest2) -> Right (CompoundMelody subMelodies, rest2)
         _ -> Left "Expected closing parenthesis"
     Left err -> Left err
 parseCompound _ = Left "Expected opening parenthesis"
@@ -218,7 +223,7 @@ parseMelodies input =
         if null rest || (not (null rest) && C.isSpace (head rest)) -- check if not null and if it is not ' ' (which means melody is over)
           then Right ([melody], rest) -- Stop if no more input is left to parse
           else case parseMelodies rest of
-            Right (melodies, rest') -> Right (melody : melodies, rest')
+            Right (subMelodies, rest') -> Right (melody : subMelodies, rest')
             Left err -> Left err -- Propagate the error if parsing fails
       Left err -> Left err -- Return error if the first melody fails
 
@@ -240,7 +245,7 @@ parseSmallInteger = and2 SmallInteger parseSign parseDigit
 parseCreateMelody :: Parser Query
 parseCreateMelody =
   and5
-    (\_ melodyId _ melodies _ -> CreateMelody melodyId (CompoundMelody melodies))
+    (\_ melodyId _ subMelodies _ -> CreateMelody melodyId (CompoundMelody subMelodies))
     (parseString "createMelody ")
     parseId
     parseWhiteSpace
@@ -363,14 +368,6 @@ or' (p : ps) input =
     Right r -> Right r
     Left _ -> or' ps input
 
--- lookupMelody helper func
-lookupMelody :: Int -> State -> Either String Melody
-lookupMelody input state =
-  let melody = lookup input (melodies state)
-   in case melody of
-        Just m -> Right m
-        Nothing -> Left "Melody not found"
-
 -- | Parses the "View" command. (cant directly do it since parseString returns String, not Query and direct casting is impossible in Haskell)
 parseView :: Parser Query
 parseView = \input ->
@@ -425,3 +422,52 @@ and5 f p1 p2 p3 p4 p5 = \input ->
             Left e3 -> Left e3
         Left e2 -> Left e2
     Left e1 -> Left e1
+
+
+-- functions!!!
+
+-- helper func to adjust Duration
+adjustDuration :: Duration -> Sign -> Int -> Duration
+adjustDuration duration sign amount = -- duration - pradinis ilgis natos
+  let adjustment = case sign of
+                     Plus -> amount
+                     Minus -> -amount
+  in adjustDurationHelper duration adjustment
+
+adjustDurationHelper :: Duration -> Int -> Duration
+adjustDurationHelper duration 0 = duration
+adjustDurationHelper duration adjustment = 
+  let nextDuration = case duration of
+                       Whole -> if adjustment < 0 then Whole else Half
+                       Half -> case adjustment of
+                         a | a < 0 -> Whole
+                           | a > 0 -> Quarter
+                           | otherwise -> Half
+                       Quarter -> case adjustment of
+                         a | a < 0 -> Half
+                           | a > 0 -> Eighth
+                           | otherwise -> Quarter
+                       Eighth -> case adjustment of
+                         a | a < 0 -> Quarter
+                           | a > 0 -> Sixteenth
+                           | otherwise -> Eighth
+                       Sixteenth -> if adjustment > 0 then Sixteenth else Eighth
+  in adjustDurationHelper nextDuration (adjustment - (signum adjustment)) -- signum outputtina zenkla. atima arba prideda 1 (kad pamazinti ir varyti link 0) ir rekursiskai callina vel
+
+-- updateMelodyTempo
+updateMelodyTempo :: Melody -> SmallInteger -> Melody
+updateMelodyTempo melody (SmallInteger sign amount) = 
+  case melody of
+    SingleNote (Note pitch duration) -> 
+      SingleNote (Note pitch (adjustDuration duration sign amount))
+    CompoundMelody subMelodies -> 
+      CompoundMelody (map (`updateMelodyTempo` (SmallInteger sign amount)) subMelodies)
+
+
+-- lookupMelody helper func
+lookupMelody :: Int -> State -> Either String Melody
+lookupMelody input state =
+  let melody = lookup input (melodies state)
+   in case melody of
+        Just m -> Right m
+        Nothing -> Left "Melody not found!"
