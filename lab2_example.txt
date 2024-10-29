@@ -1,11 +1,22 @@
 Welcome! Press [TAB] for auto completion.
->>> createMelody 69 A1A2(B2B4)(C4C8(D16F16)) stop
-Created melody 69
->>> View
-State: Current State:
+>>> createMelody 1 F2F4(G16(B16)A2) stop
+ERROR:Melody with that ID already exists
+>>> createMelody 3 F2F4(G16(B16)A2) stop
+Created melody 3
+>>> melodyList 
+Current State:
 melodies:
-SingleNote (Note F Half)
-SingleNote (Note A Quarter)
-CompoundMelody [SingleNote (Note A Whole),SingleNote (Note A Half),CompoundMelody [SingleNote (Note B Half),SingleNote (Note B Quarter)],CompoundMelody [SingleNote (Note C Quarter),SingleNote (Note C Eighth),CompoundMelody [SingleNote (Note D Sixteenth),SingleNote (Note F Sixteenth)]]]
+(1,CompoundMelody [SingleNote (Note F Half),SingleNote (Note A Quarter)])
+(2,CompoundMelody [SingleNote (Note G Half),SingleNote (Note E Sixteenth)])
+(3,CompoundMelody [SingleNote (Note F Half),SingleNote (Note F Quarter),CompoundMelody [SingleNote (Note G Sixteenth),CompoundMelody [SingleNote (Note B Sixteenth)],SingleNote (Note A Half)]])
+
+>>> changeTempoMelody 3 +2
+Changed tempo of melody 3 by SmallInteger Plus 2
+>>> melodyList 
+Current State:
+melodies:
+(1,CompoundMelody [SingleNote (Note F Half),SingleNote (Note A Quarter)])
+(2,CompoundMelody [SingleNote (Note G Half),SingleNote (Note E Sixteenth)])
+(3,CompoundMelody [SingleNote (Note F Eighth),SingleNote (Note F Sixteenth),CompoundMelody [SingleNote (Note G Sixteenth),CompoundMelody [SingleNote (Note B Sixteenth)],SingleNote (Note A Eighth)]])
 
 >>> 
