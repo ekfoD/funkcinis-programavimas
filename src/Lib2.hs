@@ -34,6 +34,8 @@ where
 -- type: Creates a type synonym (alias) for an existing type. It does not create a new type.
 -- data: Defines a new algebraic data type with its own constructors. It creates a new type.
 
+-- stack run fp2024-two --allow-different-user
+
 import qualified Data.Char as C
 import qualified Data.List as L
 
@@ -112,22 +114,28 @@ stateTransition state query = case query of
   CreateMelody int melody ->
     case lookupMelody int state of
       Right _ -> Left "Melody with that ID already exists"
-      Left _ -> let newMelody = (int, melody)
-                    newState = state {melodies = melodies state ++ [newMelody]}
-                in Right (Just $ "Created melody " ++ show int, newState) -- converts value to its string representation (nes Show inheritina)
+      Left _ ->
+        let newMelody = (int, melody)
+            newState = state {melodies = melodies state ++ [newMelody]}
+         in Right (Just $ "Created melody " ++ show int, newState) -- converts value to its string representation (nes Show inheritina)
   ReadMelody int ->
     case lookupMelody int state of
       Right m -> Right (Just $ show int ++ " melody: " ++ show m, state)
       Left err -> Left err
   ChangeTempoMelody int smallInteger ->
     case lookupMelody int state of
-      Right m -> 
+      Right m ->
         let updatedMelody = updateMelodyTempo m smallInteger
-            newState = state { melodies = map (\(mid, mel) -> if mid == int then (mid, updatedMelody) else (mid, mel)) (melodies state) } -- ideda updated melody
-        in Right (Just $ "Changed tempo of melody " ++ show int ++ " by " ++ show smallInteger, newState)
+            newState = state {melodies = map (\(mid, mel) -> if mid == int then (mid, updatedMelody) else (mid, mel)) (melodies state)} -- ideda updated melody
+         in Right (Just $ "Changed tempo of melody " ++ show int ++ " by " ++ show smallInteger, newState)
       Left err -> Left err
   TransposeMelody int smallInteger ->
-    Right (Just $ "Transposed melody " ++ show int ++ " by " ++ show smallInteger, state)
+    case lookupMelody int state of
+      Right m ->
+        let updatedMelody = transposeMelody m smallInteger
+            newState = state {melodies = map (\(mid, mel) -> if mid == int then (mid, updatedMelody) else (mid, mel)) (melodies state)}
+         in Right (Just $ "Transposed melody " ++ show int ++ " by " ++ show smallInteger, newState)
+      Left err -> Left err
   DeleteMelody int ->
     case lookupMelody int state of
       Right _ ->
@@ -312,7 +320,7 @@ parseChangeTempoMelody =
 -- ReadMelody
 parseReadMelody :: Parser Query
 parseReadMelody =
-  and2
+  and2 -- A and B
     (\_ melodyId -> ReadMelody melodyId)
     (parseString "readMelody ")
     parseId
@@ -423,46 +431,75 @@ and5 f p1 p2 p3 p4 p5 = \input ->
         Left e2 -> Left e2
     Left e1 -> Left e1
 
-
 -- functions!!!
+
+--
 
 -- helper func to adjust Duration
 adjustDuration :: Duration -> Sign -> Int -> Duration
-adjustDuration duration sign amount = -- duration - pradinis ilgis natos
+adjustDuration duration sign amount =
+  -- duration - pradinis ilgis natos
   let adjustment = case sign of
-                     Plus -> amount
-                     Minus -> -amount
-  in adjustDurationHelper duration adjustment
+        Plus -> amount
+        Minus -> -amount
+   in adjustDurationHelper duration adjustment
 
 adjustDurationHelper :: Duration -> Int -> Duration
 adjustDurationHelper duration 0 = duration
-adjustDurationHelper duration adjustment = 
+adjustDurationHelper duration adjustment =
   let nextDuration = case duration of
-                       Whole -> if adjustment < 0 then Whole else Half
-                       Half -> case adjustment of
-                         a | a < 0 -> Whole
-                           | a > 0 -> Quarter
-                           | otherwise -> Half
-                       Quarter -> case adjustment of
-                         a | a < 0 -> Half
-                           | a > 0 -> Eighth
-                           | otherwise -> Quarter
-                       Eighth -> case adjustment of
-                         a | a < 0 -> Quarter
-                           | a > 0 -> Sixteenth
-                           | otherwise -> Eighth
-                       Sixteenth -> if adjustment > 0 then Sixteenth else Eighth
-  in adjustDurationHelper nextDuration (adjustment - (signum adjustment)) -- signum outputtina zenkla. atima arba prideda 1 (kad pamazinti ir varyti link 0) ir rekursiskai callina vel
+        Whole -> if adjustment < 0 then Whole else Half
+        Half -> case adjustment of
+          a
+            | a < 0 -> Whole
+            | a > 0 -> Quarter
+            | otherwise -> Half
+        Quarter -> case adjustment of
+          a
+            | a < 0 -> Half
+            | a > 0 -> Eighth
+            | otherwise -> Quarter
+        Eighth -> case adjustment of
+          a
+            | a < 0 -> Quarter
+            | a > 0 -> Sixteenth
+            | otherwise -> Eighth
+        Sixteenth -> if adjustment > 0 then Sixteenth else Eighth
+   in adjustDurationHelper nextDuration (adjustment - (signum adjustment)) -- signum outputtina zenkla. atima arba prideda 1 (kad pamazinti ir varyti link 0) ir rekursiskai callina vel
 
 -- updateMelodyTempo
 updateMelodyTempo :: Melody -> SmallInteger -> Melody
-updateMelodyTempo melody (SmallInteger sign amount) = 
+updateMelodyTempo melody (SmallInteger sign amount) =
   case melody of
-    SingleNote (Note pitch duration) -> 
+    SingleNote (Note pitch duration) ->
       SingleNote (Note pitch (adjustDuration duration sign amount))
-    CompoundMelody subMelodies -> 
+    CompoundMelody subMelodies ->
       CompoundMelody (map (`updateMelodyTempo` (SmallInteger sign amount)) subMelodies)
 
+transposePitch :: Pitch -> Sign -> Int -> Pitch
+transposePitch pitch sign amount =
+  let adjustment = case sign of
+        Plus -> amount
+        Minus -> -amount
+      pitches = [A, B, C, D, E, F, G]
+      pitchIndex = case pitch of
+        A -> 0
+        B -> 1
+        C -> 2
+        D -> 3
+        E -> 4
+        F -> 5
+        G -> 6
+      newPitchIndex = max 0 (min 6 (pitchIndex + adjustment))
+   in pitches !! newPitchIndex
+
+transposeMelody :: Melody -> SmallInteger -> Melody
+transposeMelody melody (SmallInteger sign amount) =
+  case melody of
+    SingleNote (Note pitch duration) ->
+      SingleNote (Note (transposePitch pitch sign amount) duration)
+    CompoundMelody subMelodies ->
+      CompoundMelody (map (`transposeMelody` (SmallInteger sign amount)) subMelodies)
 
 -- lookupMelody helper func
 lookupMelody :: Int -> State -> Either String Melody
