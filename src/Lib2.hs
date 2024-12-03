@@ -63,7 +63,7 @@ data Query
   | ChangeTempoMelody Int SmallInteger
   | TransposeMelody Int SmallInteger
   | DeleteMelody Int
-  | EditMelody Int
+  | EditMelody Int [(Int, [Melody])]
   | MelodyList
   | View
   deriving (Show, Eq) -- data constructors must start with an uppercase letter or a colon (:)!
@@ -103,7 +103,8 @@ emptyState =
   State
     { melodies =
         [ (1, CompoundMelody [SingleNote (Note F Half), SingleNote (Note A Quarter)]),
-          (2, CompoundMelody [SingleNote (Note G Half), SingleNote (Note E Sixteenth)])
+          (2, CompoundMelody [SingleNote (Note G Half), SingleNote (Note E Sixteenth)]),
+          (3, CompoundMelody [SingleNote (Note A Whole), CompoundMelody [SingleNote (Note B Eighth), SingleNote (Note C Quarter)], SingleNote (Note E Eighth)])
         ]
     }
 
@@ -148,8 +149,13 @@ stateTransition state query = case query of
                 }
          in Right (Just $ "Deleted melody " ++ show int, newState)
       Left err -> Left err
-  EditMelody int ->
-    Right (Just $ "Edited melody " ++ show int, state)
+  EditMelody int editsList ->
+    case lookupMelody int state of
+      Right m ->
+        let updatedM = applyEdits m editsList
+            newState = state {melodies = map (\(mid, mel) -> if mid == int then (mid, updatedM) else (mid, mel)) (melodies state)}
+         in Right (Just $ "Editted melody " ++ show int ++ ": " ++ show updatedM, newState)
+      Left err -> Left err
   MelodyList ->
     Right (Just $ viewState state, state)
   View ->
@@ -263,13 +269,14 @@ parseCreateMelody =
 -- EditMelody
 parseEditMelody :: Parser Query
 parseEditMelody =
-  and2
-    (\_ melodyId -> EditMelody melodyId)
+  and4
+    (\_ melodyId _ editsList -> EditMelody melodyId editsList)
     (parseString "editMelody ")
     parseId
+    parseWhiteSpace
+    parseEditCommand
 
 -- F2A2(G2(B4)A4)
-
 -- 1 F2A2 2 G2 3 B4 4 A4
 -- 2 C2G16 4 A4B8 stop
 -- F2A2(C2G16(B4)A4B8)
@@ -286,8 +293,8 @@ parseEditCommand input =
               case parseEditCommand rest' of
                 Right (edits, rest'') -> Right (edit : edits, rest'')
                 Left err -> Left err
-            Left err -> Left err
-    Left err -> Left err
+            Left _ -> Left "no white space"
+    Left _ -> Left "could not parse single edit command"
 
 -- DeleteMelody
 parseDeleteMelody :: Parser Query
@@ -432,8 +439,57 @@ and5 f p1 p2 p3 p4 p5 = \input ->
     Left e1 -> Left e1
 
 -- functions!!!
+-- applyEdits :: Melody -> [(Int, [Melody])] -> Melody
+-- applyEdits melody [] = melody
+-- applyEdits melody ((index, newMelodies) : edits) = applyEdits' melody 1 index newMelodies edits
+--   where
+--     -- Helper function for applying the edit and keeping track of indices
+--     applyEdits' :: Melody -> Int -> Int -> [Melody] -> [(Int, [Melody])] -> Melody
+--     applyEdits' (SingleNote note) currentIndex targetIndex newMelodies restEdits
+--       | currentIndex == targetIndex = wrapMelodies newMelodies -- Replace with new melody
+--       | otherwise = SingleNote note -- No change if index doesn't match
+--     applyEdits' (CompoundMelody melodies) currentIndex targetIndex newMelodies restEdits =
+--       let updatedMelodies = applyEditsList melodies currentIndex targetIndex newMelodies restEdits
+--        in CompoundMelody updatedMelodies
 
---
+--     -- Applies the edits to a list of melodies, updating the correct one based on index
+--     applyEditsList :: [Melody] -> Int -> Int -> [Melody] -> [(Int, [Melody])] -> [Melody]
+--     applyEditsList [] _ _ _ _ = []
+--     applyEditsList (m : ms) currentIndex targetIndex newMelodies restEdits =
+--       if currentIndex == targetIndex
+--         then newMelodies ++ applyEditsList ms (currentIndex + 1) targetIndex newMelodies restEdits
+--         else applyEdits' m currentIndex targetIndex newMelodies restEdits : applyEditsList ms (currentIndex + 1) targetIndex newMelodies restEdits
+
+--     -- Wrap melodies into a compound if there are multiple
+--     wrapMelodies :: [Melody] -> Melody
+--     wrapMelodies [m] = m
+--     wrapMelodies ms = CompoundMelody ms
+
+applyEdits :: Melody -> [(Int, [Melody])] -> Melody
+applyEdits melody edits = applyEdits' melody edits 1
+  where
+    -- Helper function to traverse the melody and apply edits
+    applyEdits' :: Melody -> [(Int, [Melody])] -> Int -> Melody
+    applyEdits' (SingleNote note) edits currentIndex
+      | currentIndex == fst (head edits) -- Replace the note
+        =
+          wrapMelodies (snd (head edits)) -- Replace with the new melody
+      | otherwise = (SingleNote note) -- No edit applied to this note
+    applyEdits' (CompoundMelody melodies) edits currentIndex =
+      let updatedMelodies = applyEditsList melodies edits currentIndex
+       in CompoundMelody updatedMelodies
+
+    -- Applies edits to a list of melodies
+    applyEditsList :: [Melody] -> [(Int, [Melody])] -> Int -> [Melody]
+    applyEditsList [] _ _ = []
+    applyEditsList (m : ms) edits currentIndex =
+      let newMelody = applyEdits' m edits currentIndex
+       in newMelody : applyEditsList ms edits (currentIndex + 1)
+
+    -- Helper to wrap a single melody into a CompoundMelody if necessary
+    wrapMelodies :: [Melody] -> Melody
+    wrapMelodies [m] = m
+    wrapMelodies ms = CompoundMelody ms
 
 -- helper func to adjust Duration
 adjustDuration :: Duration -> Sign -> Int -> Duration
