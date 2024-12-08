@@ -100,12 +100,12 @@ viewState (State subMelodies) =
 -- | Creates an initial program's state. It is called once when the program starts.
 emptyState :: State
 emptyState =
-  State
-    { melodies =
-        [ (1, CompoundMelody [SingleNote (Note F Half), SingleNote (Note A Quarter)]),
-          (2, CompoundMelody [SingleNote (Note G Half), SingleNote (Note E Sixteenth)]),
-          (3, CompoundMelody [SingleNote (Note A Whole), CompoundMelody [SingleNote (Note B Eighth), SingleNote (Note C Quarter)], SingleNote (Note E Eighth)])
-        ]
+  State { melodies = []
+    -- melodies =
+    --     [ (1, CompoundMelody [SingleNote (Note F Half), SingleNote (Note A Quarter)]),
+    --       (2, CompoundMelody [SingleNote (Note G Half), SingleNote (Note E Sixteenth)]),
+    --       (3, CompoundMelody [SingleNote (Note A Whole), CompoundMelody [SingleNote (Note B Eighth), SingleNote (Note C Quarter)], SingleNote (Note E Eighth)])
+    --     ]
     }
 
 -- | Updates a state according to a query. This allows your program to share the state between repl iterations.
@@ -439,32 +439,7 @@ and5 f p1 p2 p3 p4 p5 = \input ->
     Left e1 -> Left e1
 
 -- functions!!!
--- applyEdits :: Melody -> [(Int, [Melody])] -> Melody
--- applyEdits melody [] = melody
--- applyEdits melody ((index, newMelodies) : edits) = applyEdits' melody 1 index newMelodies edits
---   where
---     -- Helper function for applying the edit and keeping track of indices
---     applyEdits' :: Melody -> Int -> Int -> [Melody] -> [(Int, [Melody])] -> Melody
---     applyEdits' (SingleNote note) currentIndex targetIndex newMelodies restEdits
---       | currentIndex == targetIndex = wrapMelodies newMelodies -- Replace with new melody
---       | otherwise = SingleNote note -- No change if index doesn't match
---     applyEdits' (CompoundMelody melodies) currentIndex targetIndex newMelodies restEdits =
---       let updatedMelodies = applyEditsList melodies currentIndex targetIndex newMelodies restEdits
---        in CompoundMelody updatedMelodies
-
---     -- Applies the edits to a list of melodies, updating the correct one based on index
---     applyEditsList :: [Melody] -> Int -> Int -> [Melody] -> [(Int, [Melody])] -> [Melody]
---     applyEditsList [] _ _ _ _ = []
---     applyEditsList (m : ms) currentIndex targetIndex newMelodies restEdits =
---       if currentIndex == targetIndex
---         then newMelodies ++ applyEditsList ms (currentIndex + 1) targetIndex newMelodies restEdits
---         else applyEdits' m currentIndex targetIndex newMelodies restEdits : applyEditsList ms (currentIndex + 1) targetIndex newMelodies restEdits
-
---     -- Wrap melodies into a compound if there are multiple
---     wrapMelodies :: [Melody] -> Melody
---     wrapMelodies [m] = m
---     wrapMelodies ms = CompoundMelody ms
-
+-- editting func
 applyEdits :: Melody -> [(Int, [Melody])] -> Melody
 applyEdits melody edits = applyEdits' melody edits 1
   where
