@@ -101,11 +101,6 @@ viewState (State subMelodies) =
 emptyState :: State
 emptyState =
   State { melodies = []
-    -- melodies =
-    --     [ (1, CompoundMelody [SingleNote (Note F Half), SingleNote (Note A Quarter)]),
-    --       (2, CompoundMelody [SingleNote (Note G Half), SingleNote (Note E Sixteenth)]),
-    --       (3, CompoundMelody [SingleNote (Note A Whole), CompoundMelody [SingleNote (Note B Eighth), SingleNote (Note C Quarter)], SingleNote (Note E Eighth)])
-    --     ]
     }
 
 -- | Updates a state according to a query. This allows your program to share the state between repl iterations.
@@ -335,7 +330,7 @@ parseReadMelody =
 -- MelodyList
 parseMelodyList :: Parser Query
 parseMelodyList input =
-  case parseString "melodyList " input of
+  case parseString "melodyList" input of
     Right (_, rest) -> Right (MelodyList, rest)
     Left err -> Left err
 
