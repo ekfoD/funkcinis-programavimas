@@ -1,0 +1,6 @@
+BEGIN createMelody 4 G2G1(G16) stop; createMelody 5 G2G1(G16) stop; createMelody 6 G2G1(G16) stop; readMelody 4 END
+save
+BEGIN deleteMelody 4; deleteMelody 5; deleteMelody 6 END
+melodyList
+load
+melodyList
