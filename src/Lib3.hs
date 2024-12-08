@@ -119,9 +119,9 @@ marshallState state =
 -- Must have a property test
 -- for all s: parseStatements (renderStatements s) == Right(s, "")
 renderStatements :: Statements -> String
-renderStatements (Single query) = renderQuery query
+renderStatements (Single query) = "BEGIN " ++ renderQuery query ++ " END"
 renderStatements (Batch queries) =
-  unlines $ map renderQuery queries
+  "BEGIN " ++ unwords (map (\q -> renderQuery q ++ ";") queries) ++ " END"
 
 -- Helper function to render a single query
 renderQuery :: Lib2.Query -> String
