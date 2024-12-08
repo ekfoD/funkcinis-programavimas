@@ -1,5 +1,11 @@
 ## my BNF:
 
+<batch> ::= "BEGIN" <multipleQueries> "END"
+
+<multipleQueries> ::= <query> | <query> "; " <query>...
+
+<query> ::= <createMelody> | <editMelody> | <deleteMelody> | <readMelody> | <transposeMelody> | <changeMelodyTempo>
+
 <pitch> ::= "C" | "D" | "E" | "F" | "G" | "A" | "B"
 
 <duration> ::= "1" | "2" | "4" | "8" | "16"

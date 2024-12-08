@@ -1,5 +1,23 @@
 # fp-2024
 
+
+## lab 3 README.md
+
+### Ability to process batches!
+
+- syntax to do it: `BEGIN query1; query2 END`
+
+- there can be many queries. What matters is that they would be seperated using "; "
+
+
+### Ability to save and load current state!
+
+- if you want to save, just write "save" and it will save current state into a file "melody_state.txt"
+
+- for loading, just write "load" and it will overwrite the current state with data from the file "melody_state.txt"
+
+## Original README.md
+
 ### What is this:
 
 this app will be for producers who want to create music. possible actions:

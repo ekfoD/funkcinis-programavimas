@@ -12,10 +12,11 @@ module Lib3
 where
 
 import Control.Concurrent (Chan, newChan, readChan, writeChan)
-import Control.Concurrent.STM (TVar, atomically, readTVar, readTVarIO, writeTVar)
-import Control.Monad (forever, foldM)
+import Control.Concurrent.STM (TVar, STM, atomically, readTVar, readTVarIO, writeTVar, newTVarIO)
+import Control.Monad (forever)
 import qualified Lib2
-import System.IO (readFile, writeFile)
+import Data.List (isPrefixOf, isSuffixOf, isInfixOf)
+import Data.Char (isSpace)
 
 data StorageOp = Save String (Chan ()) | Load (Chan String)
 
@@ -48,42 +49,62 @@ data Command
   | SaveCommand
   deriving (Show, Eq)
 
--- Parse a command from input
+-- Updated parse command to support new syntax and :paste
 parseCommand :: String -> Either String (Command, String)
 parseCommand input
   | input == "save" = Right (SaveCommand, "")
   | input == "load" = Right (LoadCommand, "")
   | otherwise =
       case parseStatements input of
-        Right (statements, remainder) ->
-          Right (StatementCommand statements, remainder)
+        Right (statements, remainder) -> Right (StatementCommand statements, remainder)
         Left err -> Left err
 
+-- Helper function to trim whitespace from both ends of a string
+trim :: String -> String
+trim = f . f
+  where f = reverse . dropWhile isSpace
+
+-- Parse a batch of queries from a single input string
 -- Parse statements from a string
 parseStatements :: String -> Either String (Statements, String)
 parseStatements input =
-  case lines input of
-    [] -> Left "Empty input"
-    lines' ->
-      case parseQueriesFromLines lines' of
-        Right (queries, remainder) ->
-          Right
-            ( if length queries > 1 then Batch queries else Single (head queries),
-              unlines remainder
-            )
+  let trimmedInput = trim input
+  in if "BEGIN" `isPrefixOf` trimmedInput && "END" `isSuffixOf` trimmedInput
+    then
+      case parseBatchQueries input of
+        Right (queries, remainder) -> Right (Batch queries, remainder)
         Left err -> Left err
+    else
+      case Lib2.parseQuery input of
+        Right query -> Right (Single query, "")  -- Single query case
+        Left err -> Left $ "Error parsing single query: " ++ err
 
--- Helper to parse queries from lines
-parseQueriesFromLines :: [String] -> Either String ([Lib2.Query], [String])
-parseQueriesFromLines lines' = go lines' []
+-- Parse multiple queries within BEGIN ... END block
+parseBatchQueries :: String -> Either String ([Lib2.Query], String)
+parseBatchQueries input =
+  let
+    -- Remove BEGIN and END and split by "; "
+    trimmedInput = trim $ drop 6 $ take (length input - 4) input  -- Remove "BEGIN " and " END"
+    queries = map Lib2.parseQuery (splitOn "; " trimmedInput)
+  in
+    case sequence queries of
+      Right queries' -> Right (queries', "")  -- Successfully parsed all queries
+      Left err -> Left $ "Error parsing query: " ++ err
   where
-    go [] acc = Right (reverse acc, [])
-    go (line : rest) acc
-      | line == "stop" = Right (reverse acc, rest)
-      | otherwise =
-          case Lib2.parseQuery line of
-            Right query -> go rest (query : acc)
-            Left err -> Left $ "Error parsing query: " ++ err
+    -- Helper function for trimming
+    trim = dropWhile (== ' ') . dropWhileEnd (== ' ')
+    dropWhileEnd p = reverse . dropWhile p . reverse
+
+-- helper splitter function
+splitOn :: String -> String -> [String]
+splitOn delimiter str
+  | delimiter `isInfixOf` str = splitHelper str []
+  | otherwise = [str]
+  where
+    splitHelper [] acc = [reverse acc]
+    splitHelper s acc
+      | delimiter `isPrefixOf` s = reverse acc : splitHelper (drop (length delimiter) s) []
+      | otherwise = splitHelper (tail s) (head s : acc)
 
 -- | Converts program's state into Statements
 -- (probably a batch, but might be a single query)
@@ -169,9 +190,11 @@ stateTransition stateTVar command ioChan = do
       content <- readChan responseChan
       case parseStatements content of
         Right (statements, _) -> do
-          case applyStatements Lib2.emptyState statements of
-            Right (output, newState) -> do
-              atomically $ writeTVar stateTVar newState
+          emptyStateTVar <- newTVarIO Lib2.emptyState
+          result <- atomically $ applyStatementsSTM emptyStateTVar statements
+          case result of
+            Right (output, newState) ->  do
+              atomically $ writeTVar stateTVar newState 
               return $ Right (Just ("Statements applied successfully:\n" ++ output))
             Left err -> return $ Left err
         Left err -> return $ Left err
@@ -183,20 +206,33 @@ stateTransition stateTVar command ioChan = do
       _ <- readChan responseChan
       return $ Right (Just "State saved successfully")
     StatementCommand statements -> do
-      currentState <- readTVarIO stateTVar
-      case applyStatements currentState statements of
-        Right (output, newState) -> do
-          atomically $ writeTVar stateTVar newState
+      result <- atomically $ applyStatementsSTM stateTVar statements
+      case result of
+        Right (output, _) -> 
           return $ Right (Just ("Statements applied successfully:\n" ++ output))
         Left err -> return $ Left err
 
-applyStatements :: Lib2.State -> Statements -> Either String (String, Lib2.State)
-applyStatements currentState (Single query) =
+-- New STM-based statement application
+applyStatementsSTM :: 
+  TVar Lib2.State -> 
+  Statements -> 
+  STM (Either String (String, Lib2.State))
+applyStatementsSTM stateTVar statements = do
+  currentState <- readTVar stateTVar
+  case applyStatementsInner currentState statements of
+    Right (output, newState) -> do
+      writeTVar stateTVar newState
+      return $ Right (output, newState)
+    Left err -> return $ Left err -- Return the error instead of throwing
+
+-- Helper function to apply statements
+applyStatementsInner :: Lib2.State -> Statements -> Either String (String, Lib2.State)
+applyStatementsInner currentState (Single query) =
   case Lib2.stateTransition currentState query of
     Right (Just output, newState) -> Right (output, newState)
     Right (Nothing, newState) -> Right ("", newState)
     Left err -> Left err
-applyStatements currentState (Batch queries) =
+applyStatementsInner currentState (Batch queries) =
   foldl
     ( \acc query -> case acc of
         Right (outputs, state) ->
