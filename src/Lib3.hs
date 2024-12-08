@@ -111,13 +111,17 @@ renderQuery _ = error "Only CreateMelody can be rendered"
 renderMelody :: Lib2.Melody -> String
 renderMelody (Lib2.SingleNote note) = renderNote note
 renderMelody (Lib2.CompoundMelody melodies) =
-  renderCompoundMelody melodies
+  renderFirstLayer melodies
 
--- Render compound melody without extra parentheses if single melody
-renderCompoundMelody :: [Lib2.Melody] -> String
-renderCompoundMelody [Lib2.SingleNote note] = renderNote note
-renderCompoundMelody melodies =
-  "(" ++ concatMap renderMelody melodies ++ ")"
+-- Render the first layer of compound melody without parentheses
+renderFirstLayer :: [Lib2.Melody] -> String
+renderFirstLayer = concatMap renderMelodyLayer
+
+-- Render each layer of melody
+renderMelodyLayer :: Lib2.Melody -> String
+renderMelodyLayer (Lib2.SingleNote note) = renderNote note
+renderMelodyLayer (Lib2.CompoundMelody melodies) =
+  "(" ++ concatMap renderMelodyLayer melodies ++ ")"
 
 renderNote :: Lib2.Note -> String
 renderNote (Lib2.Note pitch duration) =
@@ -166,9 +170,9 @@ stateTransition stateTVar command ioChan = do
       case parseStatements content of
         Right (statements, _) -> do
           case applyStatements Lib2.emptyState statements of
-            Right newState -> do
+            Right (output, newState) -> do
               atomically $ writeTVar stateTVar newState
-              return $ Right (Just "State loaded successfully")
+              return $ Right (Just ("Statements applied successfully:\n" ++ output))
             Left err -> return $ Left err
         Left err -> return $ Left err
     SaveCommand -> do
@@ -181,25 +185,28 @@ stateTransition stateTVar command ioChan = do
     StatementCommand statements -> do
       currentState <- readTVarIO stateTVar
       case applyStatements currentState statements of
-        Right newState -> do
+        Right (output, newState) -> do
           atomically $ writeTVar stateTVar newState
-          return $ Right (Just "Statements applied successfully")
+          return $ Right (Just ("Statements applied successfully:\n" ++ output))
         Left err -> return $ Left err
 
-applyStatements :: Lib2.State -> Statements -> Either String Lib2.State
+applyStatements :: Lib2.State -> Statements -> Either String (String, Lib2.State)
 applyStatements currentState (Single query) =
   case Lib2.stateTransition currentState query of
-    Right (_, newState) -> Right newState
+    Right (Just output, newState) -> Right (output, newState)
+    Right (Nothing, newState) -> Right ("", newState)
     Left err -> Left err
 applyStatements currentState (Batch queries) =
   foldl
-    ( \acc query ->
-        case acc of
-          Right state ->
-            case Lib2.stateTransition state query of
-              Right (_, newState) -> Right newState
-              Left err -> Left err
-          Left err -> Left err
+    ( \acc query -> case acc of
+        Right (outputs, state) ->
+          case Lib2.stateTransition state query of
+            Right (Just output, newState) ->
+              Right (outputs ++ "\n" ++ output, newState)
+            Right (Nothing, newState) ->
+              Right (outputs, newState)
+            Left err -> Left err
+        Left err -> Left err
     )
-    (Right currentState)
+    (Right ("", currentState))
     queries
