@@ -2,3 +2,4 @@
 .ssh/
 *~
 Testing.hs
+melody_state.txt
