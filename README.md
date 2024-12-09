@@ -5,7 +5,7 @@
 
 ### Ability to process batches!
 
-- syntax to do it: `BEGIN query1; query2 END`
+- syntax to do it: `BEGIN query1; query2; END`
 
 - there can be many queries. What matters is that they would be seperated using "; "
 

@@ -1,8 +1,11 @@
 {-# LANGUAGE InstanceSigs #-}
 
 module Lib3
-  ( stateTransition,
-    StorageOp (..),
+  ( StorageOp (..),
+    Statements (..),
+    Command (..),
+    applyStatementsInner,
+    stateTransition,
     storageOpLoop,
     parseCommand,
     parseStatements,
@@ -12,11 +15,11 @@ module Lib3
 where
 
 import Control.Concurrent (Chan, newChan, readChan, writeChan)
-import Control.Concurrent.STM (TVar, STM, atomically, readTVar, readTVarIO, writeTVar, newTVarIO)
+import Control.Concurrent.STM (STM, TVar, atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
 import Control.Monad (forever)
-import qualified Lib2
-import Data.List (isPrefixOf, isSuffixOf, isInfixOf)
 import Data.Char (isSpace)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf)
+import qualified Lib2
 
 data StorageOp = Save String (Chan ()) | Load (Chan String)
 
@@ -62,34 +65,31 @@ parseCommand input
 -- Helper function to trim whitespace from both ends of a string
 trim :: String -> String
 trim = f . f
-  where f = reverse . dropWhile isSpace
+  where
+    f = reverse . dropWhile isSpace
 
 -- Parse a batch of queries from a single input string
 -- Parse statements from a string
 parseStatements :: String -> Either String (Statements, String)
 parseStatements input =
   let trimmedInput = trim input
-  in if "BEGIN" `isPrefixOf` trimmedInput && "END" `isSuffixOf` trimmedInput
-    then
-      case parseBatchQueries input of
-        Right (queries, remainder) -> Right (Batch queries, remainder)
-        Left err -> Left err
-    else
-      case Lib2.parseQuery input of
-        Right query -> Right (Single query, "")  -- Single query case
-        Left err -> Left $ "Error parsing single query: " ++ err
+   in if "BEGIN" `isPrefixOf` trimmedInput && "END" `isSuffixOf` trimmedInput
+        then case parseBatchQueries input of
+          Right (queries, remainder) -> Right (Batch queries, remainder)
+          Left err -> Left err
+        else case Lib2.parseQuery input of
+          Right query -> Right (Single query, "") -- Single query case
+          Left err -> Left $ "Error parsing single query: " ++ err
 
 -- Parse multiple queries within BEGIN ... END block
 parseBatchQueries :: String -> Either String ([Lib2.Query], String)
 parseBatchQueries input =
-  let
-    -- Remove BEGIN and END and split by "; "
-    trimmedInput = trim $ drop 6 $ take (length input - 4) input  -- Remove "BEGIN " and " END"
-    queries = map Lib2.parseQuery (splitOn "; " trimmedInput)
-  in
-    case sequence queries of
-      Right queries' -> Right (queries', "")  -- Successfully parsed all queries
-      Left err -> Left $ "Error parsing query: " ++ err
+  let -- Remove BEGIN and END and split by "; "
+      trimmedInput = trim $ drop 6 $ take (length input - 4) input -- Remove "BEGIN " and " END"
+      queries = map Lib2.parseQuery (splitOn "; " trimmedInput)
+   in case sequence queries of
+        Right queries' -> Right (queries', "") -- Successfully parsed all queries
+        Left err -> Left $ "Error parsing query: " ++ err
   where
     -- Helper function for trimming
     trim = dropWhile (== ' ') . dropWhileEnd (== ' ')
@@ -193,8 +193,8 @@ stateTransition stateTVar command ioChan = do
           emptyStateTVar <- newTVarIO Lib2.emptyState
           result <- atomically $ applyStatementsSTM emptyStateTVar statements
           case result of
-            Right (output, newState) ->  do
-              atomically $ writeTVar stateTVar newState 
+            Right (output, newState) -> do
+              atomically $ writeTVar stateTVar newState
               return $ Right (Just ("Statements applied successfully:\n" ++ output))
             Left err -> return $ Left err
         Left err -> return $ Left err
@@ -208,14 +208,14 @@ stateTransition stateTVar command ioChan = do
     StatementCommand statements -> do
       result <- atomically $ applyStatementsSTM stateTVar statements
       case result of
-        Right (output, _) -> 
+        Right (output, _) ->
           return $ Right (Just ("Statements applied successfully:\n" ++ output))
         Left err -> return $ Left err
 
 -- New STM-based statement application
-applyStatementsSTM :: 
-  TVar Lib2.State -> 
-  Statements -> 
+applyStatementsSTM ::
+  TVar Lib2.State ->
+  Statements ->
   STM (Either String (String, Lib2.State))
 applyStatementsSTM stateTVar statements = do
   currentState <- readTVar stateTVar
