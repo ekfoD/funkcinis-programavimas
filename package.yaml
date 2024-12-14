@@ -87,11 +87,14 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - fp2024
+    - free
     - repline
     - lens
     - wreq
     - bytestring
     - string-conversions
+    - transformers
+    - mtl
   fp2024-four-server:
     main:                Main.hs
     source-dirs:         app4-server
@@ -101,6 +104,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - fp2024
+    - stm
     - repline
     - scotty
     - string-conversions

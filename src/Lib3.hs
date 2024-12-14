@@ -68,6 +68,10 @@ trim = f . f
   where
     f = reverse . dropWhile isSpace
 
+-- f . f = f(f(x))
+-- reversina stringa ir visus tarpus pasalina
+-- reversina vel, ir visus tarpus is kitos puses pasalina
+
 -- Parse a batch of queries from a single input string
 -- Parse statements from a string
 parseStatements :: String -> Either String (Statements, String)
@@ -86,6 +90,7 @@ parseBatchQueries :: String -> Either String ([Lib2.Query], String)
 parseBatchQueries input =
   let -- Remove BEGIN and END and split by "; "
       trimmedInput = trim $ drop 6 $ take (length input - 4) input -- Remove "BEGIN " and " END"
+      -- \$ -> kad maziau skliaustu butu. pvz.: f $ g $ h x = f(g(h(x)))
       queries = map Lib2.parseQuery (splitOn "; " trimmedInput)
    in case sequence queries of
         Right queries' -> Right (queries', "") -- Successfully parsed all queries
@@ -114,10 +119,7 @@ marshallState state =
 
 -- | Renders Statements into a String which
 -- can be parsed back into Statements by parseStatements
--- function. The String returned by this function must be used
--- as persist program's state in a file.
--- Must have a property test
--- for all s: parseStatements (renderStatements s) == Right(s, "")
+-- function.
 renderStatements :: Statements -> String
 renderStatements (Single query) = "BEGIN " ++ renderQuery query ++ " END"
 renderStatements (Batch queries) =
@@ -167,16 +169,6 @@ renderDuration Lib2.Eighth = "8"
 renderDuration Lib2.Sixteenth = "16"
 
 -- | Updates a state according to a command.
--- Performs file IO via ioChan if needed.
--- This allows your program to share the state
--- between repl iterations, save the state to a file,
--- load the state from the file so the state is preserved
--- between program restarts.
--- Keep IO as small as possible.
--- State update must be executed atomically (STM).
--- Right contains an optional message to print, updated state
--- is stored in transactinal variable
--- State transition handling file operations and state updates
 stateTransition ::
   TVar Lib2.State ->
   Command ->
@@ -185,6 +177,11 @@ stateTransition ::
 stateTransition stateTVar command ioChan = do
   case command of
     LoadCommand -> do
+      -- sukuria nauja kanala
+      -- iraso i ioChan Load komanda
+      -- laukia atsakymo
+      -- jei ats != empty, tai new State = empty state
+      -- atomically -> jei nepaeina nors vienas, instant error
       responseChan <- newChan
       writeChan ioChan (Load responseChan)
       content <- readChan responseChan
@@ -194,25 +191,25 @@ stateTransition stateTVar command ioChan = do
           result <- atomically $ applyStatementsSTM emptyStateTVar statements
           case result of
             Right (output, newState) -> do
-              atomically $ writeTVar stateTVar newState
+              atomically $ writeTVar stateTVar newState -- iraso ta state i stateTVar
               return $ Right (Just ("Statements applied successfully:\n" ++ output))
             Left err -> return $ Left err
         Left err -> return $ Left err
     SaveCommand -> do
-      state <- readTVarIO stateTVar
-      let stateRepr = renderStatements (marshallState state)
-      responseChan <- newChan
-      writeChan ioChan (Save stateRepr responseChan)
-      _ <- readChan responseChan
+      state <- readTVarIO stateTVar -- dabartini state perskaito
+      let stateRepr = renderStatements (marshallState state) -- pakeicia i stringa dabartini state
+      responseChan <- newChan -- new chan
+      writeChan ioChan (Save stateRepr responseChan) -- iraso i ioChan Save komanda
+      _ <- readChan responseChan -- palaukia response'o
       return $ Right (Just "State saved successfully")
     StatementCommand statements -> do
-      result <- atomically $ applyStatementsSTM stateTVar statements
+      result <- atomically $ applyStatementsSTM stateTVar statements -- pritaiko ant dabartinio state'o atomically visus statements
       case result of
         Right (output, _) ->
           return $ Right (Just ("Statements applied successfully:\n" ++ output))
         Left err -> return $ Left err
 
--- New STM-based statement application
+-- New STM-based statement application (thread safe)
 applyStatementsSTM ::
   TVar Lib2.State ->
   Statements ->
@@ -221,9 +218,9 @@ applyStatementsSTM stateTVar statements = do
   currentState <- readTVar stateTVar
   case applyStatementsInner currentState statements of
     Right (output, newState) -> do
-      writeTVar stateTVar newState
+      writeTVar stateTVar newState -- all good? tai paraso viska i stateTVar
       return $ Right (output, newState)
-    Left err -> return $ Left err -- Return the error instead of throwing
+    Left err -> return $ Left err
 
 -- Helper function to apply statements
 applyStatementsInner :: Lib2.State -> Statements -> Either String (String, Lib2.State)
@@ -246,3 +243,34 @@ applyStatementsInner currentState (Batch queries) =
     )
     (Right ("", currentState))
     queries
+
+-- monads -> it is a way to chain operations
+
+-- functors -> leidzia funkcija applyinti ant kazkokios data kuri yra wrapped kazkokiam kontekste
+-- fmap (+3) (Just 2)  -- Returns Just 5
+-- (+3) <$> Just 2  -- taip pat veikia bet kitoks zymejimas
+-- fmap (+3) Nothing   -- Returns Nothing
+-- Functors allow you to apply functions to values while maintaining the original context or structure,
+-- which is impossible with standard function application.
+
+-- f1 <$> f2? -> tiesiog funkciju kompozicija, f1(f2(x))
+
+-- applicatives -> wrappina ne tik value bet ir funkcija
+-- kam noretum wrappinti funkcija? -> Using wrapped functions saves you time and effort when working with things that might fail,
+-- have side effects, or represent multiple possibilities. They do the hard work of handling those situations for you.
+
+-- pure keyword -> pavercia funkcija i applicative context (Maybe, IO, etc.) (idedi kazka i deze)
+-- pure (+) <*> Just 2 <*> Just 3  -- Returns Just 5
+-- pure (+) <*> Just 2 <*> Nothing  -- Returns Nothing
+-- pure (+) <*> Nothing <*> Just 3  -- Returns Nothing
+-- pure (+) <*> Nothing <*> Nothing  -- Returns Nothing
+
+-- monads -> This is what makes monads powerful: they allow you to handle the context for each step without breaking the chain
+-- some examples:
+-- Just 3 >>= (\x -> Just (x + 2)) -- Result: Just 5
+-- Nothing >>= (\x -> Just (x + 2)) -- Result: Nothing
+
+-- [1, 2] >>= (\x -> [x, x + 10]) -- Result: [1,11,2,12]
+
+-- getLine >>= (\name -> putStrLn ("Hello, " ++ name))
+-- do syntax del paprastumo yra. tai tas pats kas >>=
