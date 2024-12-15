@@ -25,6 +25,8 @@ source-repository head
 
 library
   exposed-modules:
+      DSL
+      IMI
       Lessons.Lesson01
       Lessons.Lesson02
       Lessons.Lesson03
@@ -52,6 +54,7 @@ library
     , async
     , base >=4.7 && <5
     , free
+    , mtl
     , random
     , stm
     , strict
@@ -174,7 +177,9 @@ test-suite fp2024-test
   build-depends:
       base >=4.7 && <5
     , fp2024
+    , mtl
     , tasty
     , tasty-hunit
     , tasty-quickcheck
+    , transformers
   default-language: Haskell2010

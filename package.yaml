@@ -43,6 +43,7 @@ library:
   - QuickCheck
   - transformers
   - strict
+  - mtl
 
 executables:
   fp2024-one:
@@ -112,7 +113,8 @@ executables:
 tests:
   fp2024-test:
     main:                Spec.hs
-    source-dirs:         test
+    source-dirs:         
+    - test 
     ghc-options:
     - -threaded
     - -rtsopts
@@ -120,6 +122,8 @@ tests:
     dependencies:
     - fp2024
     - tasty
+    - transformers
+    - mtl
     - tasty-hunit
     - tasty-quickcheck
   fp2024-doctest:

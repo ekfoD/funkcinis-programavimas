@@ -1,13 +1,15 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main where
-
 import Lib2 qualified
 import Lib3 qualified
+import DSL qualified as MelodyInterpreter
+import IMI qualified as IMI
 import Test.Tasty (TestTree, defaultMain, testGroup)
-import Test.Tasty.HUnit (testCase, (@?=))
+import Test.Tasty.HUnit (testCase, (@?=), assertFailure)
 import Test.Tasty.QuickCheck as QC
+import qualified Control.Monad.Trans.State.Strict as State
+import Control.Monad.Except (ExceptT, liftIO, throwError, runExceptT)
 
 main :: IO ()
 main = defaultMain tests
@@ -45,6 +47,84 @@ genBatchStatements = Lib3.Batch <$> listOf1 genCreateMelodyQuery
 instance Arbitrary Lib3.Statements where
   arbitrary = genBatchStatements
 
+
+-- Helper function to run InMemory interpreter and extract result
+runInterpreter :: MelodyInterpreter.Domain a -> IO (Either String a)
+runInterpreter program = runExceptT $ State.evalStateT (IMI.interpretInMemory program) []
+
+
+-- Melody Interpreter specific tests
+melodyInterpreterTests :: TestTree
+melodyInterpreterTests =
+  testGroup
+    "Melody Interpreter Tests"
+    [ testCase "Create and Read Melody" $ do
+        result <- runInterpreter $ do
+          MelodyInterpreter.createMelody 1 "A2A4A8"
+          MelodyInterpreter.readMelody 1
+        case result of
+          Right _ -> return () -- readMelody output is printed
+          Left err -> assertFailure $ "Unexpected error: " ++ err,
+      testCase "Create Multiple Melodies" $ do
+        result <- runInterpreter $ do
+          MelodyInterpreter.createMelody 1 "A2A4A8"
+          MelodyInterpreter.createMelody 2 "B4B8B2"
+          MelodyInterpreter.melodyList
+        case result of
+          Right _ -> return () -- melodyList output is printed
+          Left err -> assertFailure $ "Unexpected error: " ++ err,
+      testCase "Delete Melody" $ do
+        result <- runInterpreter $ do
+          MelodyInterpreter.createMelody 1 "A2A4A8"
+          MelodyInterpreter.deleteMelody 1
+          MelodyInterpreter.melodyList
+        case result of
+          Right _ -> return () -- melodyList will show no melodies
+          Left err -> assertFailure $ "Unexpected error: " ++ err,
+      testCase "Change Tempo of Melody" $ do
+        result <- runInterpreter $ do
+          MelodyInterpreter.createMelody 1 "A2A4A8"
+          MelodyInterpreter.changeTempoMelody 1 "+2"
+          MelodyInterpreter.readMelody 1
+        case result of
+          Right _ -> return () -- readMelody output will show tempo change
+          Left err -> assertFailure $ "Unexpected error: " ++ err,
+      testCase "Transpose Melody" $ do
+        result <- runInterpreter $ do
+          MelodyInterpreter.createMelody 1 "A2A4A8"
+          MelodyInterpreter.transposeMelody 1 "+2"
+          MelodyInterpreter.readMelody 1
+        case result of
+          Right _ -> return () -- readMelody output will show transposition
+          Left err -> assertFailure $ "Unexpected error: " ++ err,
+      testCase "Edit Melody" $ do
+        result <- runInterpreter $ do
+          MelodyInterpreter.createMelody 1 "A2A4A8"
+          MelodyInterpreter.editMelody 1 "C4D4E4"
+          MelodyInterpreter.readMelody 1
+        case result of
+          Right _ -> return () -- readMelody output will show edit
+          Left err -> assertFailure $ "Unexpected error: " ++ err,
+      testCase "Save and Load Melodies" $ do
+        result <- runInterpreter $ do
+          MelodyInterpreter.createMelody 1 "A2A4A8"
+          MelodyInterpreter.createMelody 2 "B4B8B2"
+          MelodyInterpreter.save
+          MelodyInterpreter.deleteMelody 1
+          MelodyInterpreter.deleteMelody 2
+          MelodyInterpreter.load
+          MelodyInterpreter.melodyList
+        case result of
+          Right _ -> return () -- melodyList will show original melodies
+          Left err -> assertFailure $ "Unexpected error: " ++ err,
+      testCase "Read Non-Existent Melody Fails" $ do
+        result <- runInterpreter $ do
+          MelodyInterpreter.readMelody 999
+        case result of
+          Left err -> return () -- Expecting an error
+          Right _ -> assertFailure "Expected error for non-existent melody"
+    ]
+
 -- Update property test to focus on Batch round-trip
 propertyTests :: TestTree
 propertyTests =
@@ -61,7 +141,8 @@ tests =
   testGroup
     "Melody State Tests"
     [ unitTests,
-      propertyTests
+      propertyTests,
+      melodyInterpreterTests
     ]
 
 unitTests :: TestTree
