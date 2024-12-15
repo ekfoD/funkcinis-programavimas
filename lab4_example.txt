@@ -1,0 +1,53 @@
+Response {responseStatus = Status {statusCode = 200, statusMessage = "OK"}, responseVersion = HTTP/1.1, responseHeaders = [("Transfer-Encoding","chunked"),("Date","Sat, 14 Dec 2024 11:04:06 GMT"),("Server","Warp/3.3.25"),("Content-Type","text/plain; charset=utf-8")], responseBody = "Statements applied successfully:\n\nCreated melody 1\n1 melody: CompoundMelody [SingleNote (Note A Half),SingleNote (Note A Quarter),SingleNote (Note A Eighth)]\n", responseCookieJar = CJ {expose = []}, responseClose' = ResponseClose, responseOriginalRequest = Request {
+  host                 = "localhost"
+  port                 = 3000
+  secure               = False
+  requestHeaders       = [("Content-Type","application/octet-stream"),("User-Agent","haskell wreq-0.5.4.2")]
+  path                 = "/"
+  queryString          = ""
+  method               = "POST"
+  proxy                = Nothing
+  rawBody              = False
+  redirectCount        = 10
+  responseTimeout      = ResponseTimeoutDefault
+  requestVersion       = HTTP/1.1
+  proxySecureMode      = ProxySecureWithConnect
+}
+}
+Commands executed
+Saving
+Response {responseStatus = Status {statusCode = 200, statusMessage = "OK"}, responseVersion = HTTP/1.1, responseHeaders = [("Transfer-Encoding","chunked"),("Date","Sat, 14 Dec 2024 11:04:06 GMT"),("Server","Warp/3.3.25"),("Content-Type","text/plain; charset=utf-8")], responseBody = "State saved successfully\n", responseCookieJar = CJ {expose = []}, responseClose' = ResponseClose, responseOriginalRequest = Request {
+  host                 = "localhost"
+  port                 = 3000
+  secure               = False
+  requestHeaders       = [("Content-Type","application/octet-stream"),("User-Agent","haskell wreq-0.5.4.2")]
+  path                 = "/"
+  queryString          = ""
+  method               = "POST"
+  proxy                = Nothing
+  rawBody              = False
+  redirectCount        = 10
+  responseTimeout      = ResponseTimeoutDefault
+  requestVersion       = HTTP/1.1
+  proxySecureMode      = ProxySecureWithConnect
+}
+}
+Command executed
+Melody 1: A2A4A8
+Melodies:
+ID: 1, Melody: A2A4A8
+Program completed successfully
+Melodies:
+ID: 2, Melody: C4D4E4
+Save and load completed successfully
+Optimized Away Program Result: No commands to execute
+Complex Optimization Program Result: No commands to execute
+Multi-Melody Optimization Program Result: No commands to execute
+
+
+
+-- Server
+
+Setting phasers to stun... (port 3000) (ctrl-c to quit)
+Request was: BEGIN createMelody 1 A2A4A8 stop; readMelody 1; END
+Request was: save
