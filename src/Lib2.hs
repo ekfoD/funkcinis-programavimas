@@ -36,10 +36,15 @@ where
 
 -- stack run fp2024-two --allow-different-user
 
+import Control.Monad.Except (ExceptT (..), catchError, lift, liftIO, runExceptT, throwError)
+import Control.Monad.Trans.Except (except, throwE)
+import qualified Control.Monad.Trans.State.Strict as State
 import qualified Data.Char as C
 import qualified Data.List as L
 
-type Parser a = String -> Either String (a, String)
+-- type Parser a = String -> Either String (a, String)
+
+type Parser a = ExceptT String (State.State String) a
 
 type MelodyID = Int
 
@@ -68,7 +73,7 @@ data Query
   | View
   deriving (Show, Eq) -- data constructors must start with an uppercase letter or a colon (:)!
 
--- | Parses user's input.
+-- Query Parser
 parseQuery :: String -> Either String Query
 parseQuery input =
   let parsers =
@@ -81,9 +86,12 @@ parseQuery input =
           parseMelodyList,
           parseView
         ]
-   in case or' parsers input of
-        Right (query, _) -> Right query
-        Left _ -> Left "Error! could not parse that"
+      runParser [] = Left "No parsers succeeded"
+      runParser (p : ps) =
+        case runExceptT p `State.runState` input of
+          (Right query, _) -> Right query
+          (Left _, _) -> runParser ps
+   in runParser parsers
 
 -- | An entity which represents your program's state. Currently it has no constructors but you can introduce as many as needed.
 data State = State
@@ -100,7 +108,8 @@ viewState (State subMelodies) =
 -- | Creates an initial program's state. It is called once when the program starts.
 emptyState :: State
 emptyState =
-  State { melodies = []
+  State
+    { melodies = []
     }
 
 -- | Updates a state according to a query. This allows your program to share the state between repl iterations.
@@ -156,282 +165,245 @@ stateTransition state query = case query of
   View ->
     Right (Just $ "State: " ++ viewState state, state)
 
--- PARSERS FOR BNF THINGS
--- Pitch
+-- Pitch Parser
 parsePitch :: Parser Pitch
-parsePitch (c : cs)
-  | c == 'A' = Right (A, cs)
-  | c == 'B' = Right (B, cs)
-  | c == 'C' = Right (C, cs)
-  | c == 'D' = Right (D, cs)
-  | c == 'E' = Right (E, cs)
-  | c == 'F' = Right (F, cs)
-  | c == 'G' = Right (G, cs)
-  | otherwise = Left ("Invalid pitch: " ++ [c])
-parsePitch [] = Left "Unexpected end of input while parsing pitch"
+parsePitch = do
+  input <- lift State.get
+  case input of
+    ('A' : cs) -> lift (State.put cs) >> return A
+    ('B' : cs) -> lift (State.put cs) >> return B
+    ('C' : cs) -> lift (State.put cs) >> return C
+    ('D' : cs) -> lift (State.put cs) >> return D
+    ('E' : cs) -> lift (State.put cs) >> return E
+    ('F' : cs) -> lift (State.put cs) >> return F
+    ('G' : cs) -> lift (State.put cs) >> return G
+    [] -> throwError "Unexpected end of input while parsing pitch"
+    _ -> throwError "Invalid pitch"
 
--- Duration
+-- Duration Parser
 parseDuration :: Parser Duration
-parseDuration input = case input of
-  ('1' : '6' : cs) -> Right (Sixteenth, cs) -- Handling "16" as a special case
-  ('1' : cs) -> Right (Whole, cs)
-  ('2' : cs) -> Right (Half, cs)
-  ('4' : cs) -> Right (Quarter, cs)
-  ('8' : cs) -> Right (Eighth, cs)
-  _ -> Left "Invalid duration"
+parseDuration = do
+  input <- lift State.get
+  case input of
+    ('1' : '6' : cs) -> lift (State.put cs) >> return Sixteenth
+    ('1' : cs) -> lift (State.put cs) >> return Whole
+    ('2' : cs) -> lift (State.put cs) >> return Half
+    ('4' : cs) -> lift (State.put cs) >> return Quarter
+    ('8' : cs) -> lift (State.put cs) >> return Eighth
+    _ -> throwError "Invalid duration"
 
--- [0-9]
+-- Digit Parser
 parseDigit :: Parser Int
-parseDigit [] = Left "Unexpected end of input while parsing digit"
-parseDigit (h : t)
-  | C.isDigit h = Right (C.digitToInt h, t)
-  | otherwise = Left ("Input is not a digit: " ++ [h])
+parseDigit = do
+  input <- lift State.get
+  case input of
+    [] -> throwError "Unexpected end of input while parsing digit"
+    (h : t)
+      | C.isDigit h -> do
+          lift (State.put t)
+          return (C.digitToInt h)
+      | otherwise -> throwError ("Input is not a digit: " ++ [h])
 
--- Parse an ID in the range [0-99]
+-- ID Parser
 parseId :: Parser Int
-parseId input =
-  case parseDigit input of
-    Right (d1, rest1) ->
-      case parseDigit rest1 of
-        Right (d2, rest2) -> Right (d1 * 10 + d2, rest2)
-        Left _ -> Right (d1, rest1)
-    Left _ -> Left "ID is not provided"
+parseId = do
+  d1 <- parseDigit
+  result <- optional $ do
+    d2 <- parseDigit
+    return (d1 * 10 + d2)
+  return $ maybe d1 id result
+  where
+    optional p = (Just <$> p) `catchError` const (return Nothing)
 
--- Parse note
+-- Note Parser
 parseNote :: Parser Note
-parseNote = and2 Note parsePitch parseDuration
+parseNote = do
+  pitch <- parsePitch
+  duration <- parseDuration
+  return (Note pitch duration)
 
--- Parse a compound melody
+-- Compound Melody Parser
 parseCompound :: Parser Melody
-parseCompound ('(' : cs) =
-  case parseMelodies cs of
-    Right (subMelodies, rest1) ->
-      case rest1 of
-        (')' : rest2) -> Right (CompoundMelody subMelodies, rest2)
-        _ -> Left "Expected closing parenthesis"
-    Left err -> Left err
-parseCompound _ = Left "Expected opening parenthesis"
+parseCompound = do
+  input <- lift State.get
+  case input of
+    ('(' : cs) -> do
+      lift (State.put cs)
+      subMelodies <- parseMelodies
+      input' <- lift State.get
+      case input' of
+        (')' : rest) -> do
+          lift (State.put rest)
+          return (CompoundMelody subMelodies)
+        _ -> throwError "Expected closing parenthesis"
+    _ -> throwError "Expected opening parenthesis"
 
--- Parse a melody (single note or compound)
+-- Melody Parser
 parseMelody :: Parser Melody
-parseMelody input =
+parseMelody = do
+  input <- lift State.get
   case input of
-    ('(' : _) -> parseCompound input -- Try parsing a compound melody if it starts with '('
-    _ ->
-      case parseNote input of -- Otherwise, try parsing a single note
-        Right (note, rest) -> Right (SingleNote note, rest)
-        Left err -> Left err -- Return the error if neither parsing attempt succeeds
+    ('(' : _) -> parseCompound
+    _ -> SingleNote <$> parseNote
 
--- Parse multiple melodies
+-- Multiple Melodies Parser
 parseMelodies :: Parser [Melody]
-parseMelodies input =
+parseMelodies = do
+  input <- lift State.get
   case input of
-    (')' : _) -> Right ([], input)
-    _ -> case parseMelody input of
-      Right (melody, rest) ->
-        if null rest || (not (null rest) && C.isSpace (head rest)) -- check if not null and if it is not ' ' (which means melody is over)
-          then Right ([melody], rest) -- Stop if no more input is left to parse
-          else case parseMelodies rest of
-            Right (subMelodies, rest') -> Right (melody : subMelodies, rest')
-            Left err -> Left err -- Propagate the error if parsing fails
-      Left err -> Left err -- Return error if the first melody fails
+    (')' : _) -> return []
+    _ -> do
+      melody <- parseMelody
+      input' <- lift State.get
+      case input' of
+        [] -> return [melody]
+        (h : _)
+          | C.isSpace h -> return [melody]
+          | otherwise -> do
+              subMelodies <- parseMelodies
+              return (melody : subMelodies)
 
--- +/- sign parser
+-- Sign Parser
 parseSign :: Parser Sign
-parseSign [] = Left "No sign."
-parseSign input = case input of
-  ('+' : cs) -> Right (Plus, cs)
-  ('-' : cs) -> Right (Minus, cs)
-  _ -> Left "Invalid sign"
+parseSign = do
+  input <- lift State.get
+  case input of
+    ('+' : cs) -> lift (State.put cs) >> return Plus
+    ('-' : cs) -> lift (State.put cs) >> return Minus
+    [] -> throwError "No sign."
+    _ -> throwError "Invalid sign"
 
 -- parse SmallInteger
 parseSmallInteger :: Parser SmallInteger
-parseSmallInteger = and2 SmallInteger parseSign parseDigit
+parseSmallInteger = do
+  sign <- parseSign
+  digit <- parseDigit
+  return (SmallInteger sign digit)
 
 -- ACTIONS
 
 -- CreateMelody
 parseCreateMelody :: Parser Query
-parseCreateMelody =
-  and5
-    (\_ melodyId _ subMelodies _ -> CreateMelody melodyId (CompoundMelody subMelodies))
-    (parseString "createMelody ")
-    parseId
-    parseWhiteSpace
-    parseMelodies
-    (parseString " stop")
+parseCreateMelody = do
+  _ <- parseString "createMelody "
+  melodyId <- parseId
+  _ <- parseWhiteSpace
+  subMelodies <- parseMelodies
+  _ <- parseString " stop"
+  return (CreateMelody melodyId (CompoundMelody subMelodies))
 
 -- EditMelody
 parseEditMelody :: Parser Query
-parseEditMelody =
-  and4
-    (\_ melodyId _ editsList -> EditMelody melodyId editsList)
-    (parseString "editMelody ")
-    parseId
-    parseWhiteSpace
-    parseEditCommand
+parseEditMelody = do
+  _ <- parseString "editMelody "
+  melodyId <- parseId
+  _ <- parseWhiteSpace
+  editsList <- parseEditCommand
+  return (EditMelody melodyId editsList)
 
--- F2A2(G2(B4)A4)
--- 1 F2A2 2 G2 3 B4 4 A4
--- 2 C2G16 4 A4B8 stop
--- F2A2(C2G16(B4)A4B8)
--- Parse the edit command
+-- Parse an edit command
+
 parseEditCommand :: Parser [(Int, [Melody])]
-parseEditCommand input =
-  case parseSingleEditCommand input of
-    Right (edit, rest) ->
-      case parseString " stop" rest of
-        Right (_, rest) -> Right ([edit], rest)
-        Left _ ->
-          case parseWhiteSpace rest of -- atskiriam edit "skiemenis" tarpu
-            Right (edits, rest') ->
-              case parseEditCommand rest' of
-                Right (edits, rest'') -> Right (edit : edits, rest'')
-                Left err -> Left err
-            Left _ -> Left "no white space"
-    Left _ -> Left "could not parse single edit command"
+parseEditCommand = do
+  edit <- parseSingleEditCommand
+  stopParse <- (parseString " stop" >> return True) `catchError` const (return False)
+  if stopParse
+    then return [edit]
+    else do
+      parseWhiteSpace
+      edits <- parseEditCommand
+      return (edit : edits)
 
 -- DeleteMelody
 parseDeleteMelody :: Parser Query
-parseDeleteMelody =
-  and2
-    (\_ melodyId -> DeleteMelody melodyId)
-    (parseString "deleteMelody ")
-    parseId
+parseDeleteMelody = do
+  _ <- parseString "deleteMelody "
+  melodyId <- parseId
+  return (DeleteMelody melodyId)
 
 -- TransposeMelody
 parseTransposeMelody :: Parser Query
-parseTransposeMelody =
-  and4
-    (\_ melodyId _ signedNumb -> TransposeMelody melodyId signedNumb)
-    (parseString "transposeMelody ")
-    parseId
-    parseWhiteSpace
-    parseSmallInteger
+parseTransposeMelody = do
+  _ <- parseString "transposeMelody "
+  melodyId <- parseId
+  _ <- parseWhiteSpace
+  signedNumb <- parseSmallInteger
+  return (TransposeMelody melodyId signedNumb)
 
 -- ChangeTempoMelody
 parseChangeTempoMelody :: Parser Query
-parseChangeTempoMelody =
-  and4
-    (\_ melodyId _ signedNumb -> ChangeTempoMelody melodyId signedNumb)
-    (parseString "changeTempoMelody ")
-    parseId
-    parseWhiteSpace
-    parseSmallInteger
+parseChangeTempoMelody = do
+  _ <- parseString "changeTempoMelody "
+  melodyId <- parseId
+  _ <- parseWhiteSpace
+  signedNumb <- parseSmallInteger
+  return (ChangeTempoMelody melodyId signedNumb)
 
 -- ReadMelody
 parseReadMelody :: Parser Query
-parseReadMelody =
-  and2 -- A and B
-    (\_ melodyId -> ReadMelody melodyId)
-    (parseString "readMelody ")
-    parseId
+parseReadMelody = do
+  _ <- parseString "readMelody "
+  melodyId <- parseId
+  return (ReadMelody melodyId)
 
 -- MelodyList
 parseMelodyList :: Parser Query
-parseMelodyList input =
-  case parseString "melodyList" input of
-    Right (_, rest) -> Right (MelodyList, rest)
-    Left err -> Left err
+parseMelodyList = do
+  input <- lift State.get
+  case input of
+    "melodyList" -> lift $ State.put "" >> return MelodyList
+    _ -> throwError "Invalid command"
 
 -- Helpers
 -- HELPER PARSERS
--- for edit command
+-- Single Edit Command Parser
 parseSingleEditCommand :: Parser (Int, [Melody])
-parseSingleEditCommand =
-  and3
-    (\melodyId _ melodies -> (melodyId, melodies))
-    parseId
-    parseWhiteSpace
-    parseFirstLayerMelody
+parseSingleEditCommand = do
+  melodyId <- parseId
+  _ <- parseWhiteSpace
+  melodies <- parseFirstLayerMelody
+  return (melodyId, melodies)
 
--- for edit command
+-- First-layer Melody Parser for Edit Command
 parseFirstLayerMelody :: Parser [Melody]
-parseFirstLayerMelody input =
-  case parseNote input of
-    Right (note, rest) ->
-      if null rest || (not (null rest) && C.isSpace (head rest))
-        then Right ([SingleNote note], rest)
-        else case parseFirstLayerMelody rest of
-          Right (melodies, rest') -> Right (SingleNote note : melodies, rest')
-          Left err -> Left err
-    Left err -> Left err
+parseFirstLayerMelody = do
+  note <- parseNote
+  input <- lift State.get
+  case input of
+    [] -> return [SingleNote note]
+    (h : _)
+      | C.isSpace h -> return [SingleNote note]
+      | otherwise -> do
+          subMelodies <- parseFirstLayerMelody
+          return (SingleNote note : subMelodies)
 
--- white space
+-- White Space Parser
 parseWhiteSpace :: Parser Char
-parseWhiteSpace (c : cs)
-  | C.isSpace c = Right (c, cs)
-  | otherwise = Left ("Expected a white space, but found: " ++ [c])
-parseWhiteSpace [] = Left "Unexpected end of input while parsing white space"
+parseWhiteSpace = do
+  input <- lift State.get
+  case input of
+    (c : cs)
+      | C.isSpace c -> do
+          lift (State.put cs)
+          return c
+    [] -> throwError "Unexpected end of input while parsing white space"
+    (c : _) -> throwError ("Expected a white space, but found: " ++ [c])
 
--- string parser
+-- String Parser
 parseString :: String -> Parser String
-parseString prefix input
-  | prefix `L.isPrefixOf` input = Right (prefix, drop (length prefix) input)
-  | otherwise = Left ("Cannot find -" ++ prefix ++ "- in provided input")
+parseString prefix = do
+  input <- lift State.get
+  if prefix `L.isPrefixOf` input
+    then do
+      lift (State.put (drop (length prefix) input))
+      return prefix
+    else throwError ("Cannot find -" ++ prefix ++ "- in provided input")
 
--- Helper function to combine a list of parsers
-or' :: [Parser a] -> Parser a
-or' [] _ = Left "No parsers succeeded"
-or' (p : ps) input =
-  case p input of
-    Right r -> Right r
-    Left _ -> or' ps input
-
--- | Parses the "View" command. (cant directly do it since parseString returns String, not Query and direct casting is impossible in Haskell)
+-- View Parser
 parseView :: Parser Query
-parseView = \input ->
-  case parseString "View" input of
-    Right (_, rest) -> Right (View, rest)
-    Left err -> Left err
-
-and2 :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
-and2 c a b = \input ->
-  case a input of
-    Right (v1, r1) ->
-      case b r1 of
-        Right (v2, r2) -> Right (c v1 v2, r2)
-        Left e2 -> Left e2
-    Left e1 -> Left e1
-
-and3 :: (a -> b -> c -> d) -> Parser a -> Parser b -> Parser c -> Parser d
-and3 f a b c = \input ->
-  case a input of
-    Right (v1, r1) ->
-      case b r1 of
-        Right (v2, r2) ->
-          case c r2 of
-            Right (v3, r3) -> Right (f v1 v2 v3, r3)
-            Left e3 -> Left e3
-        Left e2 -> Left e2
-    Left e1 -> Left e1
-
-and4 :: (a -> b -> c -> d -> e) -> Parser a -> Parser b -> Parser c -> Parser d -> Parser e
-and4 f a b c d = \input ->
-  case and3 (\v1 v2 v3 -> (v1, v2, v3)) a b c input of
-    Right ((v1, v2, v3), r3) ->
-      case d r3 of
-        Right (v4, r4) -> Right (f v1 v2 v3 v4, r4)
-        Left e4 -> Left e4
-    Left e -> Left e
-
-and5 :: (a -> b -> c -> d -> e -> f) -> Parser a -> Parser b -> Parser c -> Parser d -> Parser e -> Parser f
-and5 f p1 p2 p3 p4 p5 = \input ->
-  case p1 input of
-    Right (v1, r1) ->
-      case p2 r1 of
-        Right (v2, r2) ->
-          case p3 r2 of
-            Right (v3, r3) ->
-              case p4 r3 of
-                Right (v4, r4) ->
-                  case p5 r4 of
-                    Right (v5, r5) -> Right (f v1 v2 v3 v4 v5, r5)
-                    Left e5 -> Left e5
-                Left e4 -> Left e4
-            Left e3 -> Left e3
-        Left e2 -> Left e2
-    Left e1 -> Left e1
+parseView = do
+  parseString "View"
+  return View
 
 -- functions!!!
 -- editting func

@@ -9,7 +9,8 @@ import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=), assertFailure)
 import Test.Tasty.QuickCheck as QC
 import qualified Control.Monad.Trans.State.Strict as State
-import Control.Monad.Except (ExceptT, liftIO, throwError, runExceptT)
+import Control.Monad.Except (ExceptT(..), liftIO, throwError, runExceptT)
+import System.IO.Unsafe (unsafePerformIO)
 
 main :: IO ()
 main = defaultMain tests
@@ -125,15 +126,16 @@ melodyInterpreterTests =
           Right _ -> assertFailure "Expected error for non-existent melody"
     ]
 
--- Update property test to focus on Batch round-trip
 propertyTests :: TestTree
 propertyTests =
   testGroup
     "Property Tests"
     [ testProperty "batch rendering and parsing preserves structure" $
-        \s -> case Lib3.parseStatements (Lib3.renderStatements s) of
-          Right (parsedStatements, "") -> s == parsedStatements
-          _ -> False
+        \s -> unsafePerformIO $ do
+          let rendered = Lib3.renderStatements s
+          case Lib3.parseStatements rendered of
+            Right (parsedStatements, "") -> return $ s == parsedStatements
+            _ -> return False
     ]
 
 tests :: TestTree
@@ -149,12 +151,40 @@ unitTests :: TestTree
 unitTests =
   testGroup
     "Unit Tests"
-    [ testCase "Parsing empty string fails" $
-        Lib2.parseQuery "" @?= Left "Error! could not parse that",
-      testCase "rendering works?" $
-        Lib3.renderStatements (Lib3.Batch [Lib2.CreateMelody 1 (Lib2.CompoundMelody [Lib2.SingleNote (Lib2.Note Lib2.A Lib2.Whole)])]) @?= "BEGIN createMelody 1 A1 stop; END",
-      testCase "parsing works?" $
-        Lib3.parseStatements "BEGIN createMelody 1 A1 stop END" @?= Right (Lib3.Batch [Lib2.CreateMelody 1 (Lib2.CompoundMelody [Lib2.SingleNote (Lib2.Note Lib2.A Lib2.Whole)])], ""),
-      testCase "Batch rendering works?" $
-        Lib3.renderStatements (Lib3.Batch [Lib2.CreateMelody 1 (Lib2.SingleNote (Lib2.Note Lib2.A Lib2.Whole)), Lib2.CreateMelody 2 (Lib2.SingleNote (Lib2.Note Lib2.B Lib2.Half))]) @?= "BEGIN createMelody 1 A1 stop; createMelody 2 B2 stop; END"
+    [ testCase "Parsing empty string fails" $ do
+        result <- runExceptT $ ExceptT $ return $ Lib2.parseQuery ""
+        case result of
+          Left _ -> return () -- Expect a parsing error
+          Right _ -> assertFailure "Expected parsing error for empty string",
+      testCase "Rendering works?" $ do
+        let statements = Lib3.Batch [Lib2.CreateMelody 1 (Lib2.CompoundMelody [Lib2.SingleNote (Lib2.Note Lib2.A Lib2.Whole)])]
+        Lib3.renderStatements statements @?= "BEGIN createMelody 1 A1 stop; END",
+      testCase "Parsing works?" $ do
+        result <- runExceptT $ ExceptT $ return $ Lib3.parseStatements "BEGIN createMelody 1 A1 stop END"
+        case result of
+          Right (Lib3.Batch [Lib2.CreateMelody 1 (Lib2.CompoundMelody [Lib2.SingleNote (Lib2.Note Lib2.A Lib2.Whole)])], "") -> return ()
+          _ -> assertFailure "Failed to parse valid statement",
+      testCase "Batch rendering works?" $ do
+        let statements = Lib3.Batch [Lib2.CreateMelody 1 (Lib2.SingleNote (Lib2.Note Lib2.A Lib2.Whole)), Lib2.CreateMelody 2 (Lib2.SingleNote (Lib2.Note Lib2.B Lib2.Half))]
+        Lib3.renderStatements statements @?= "BEGIN createMelody 1 A1 stop; createMelody 2 B2 stop; END",
+          -- New parsing tests
+      testCase "Parse Load Command" $ do
+        case Lib3.parseCommand "Load" of
+          Right (Lib3.LoadCommand, "") -> return ()
+          _ -> assertFailure "Failed to parse Load command",
+      
+      testCase "Parse Save Command" $ do
+        case Lib3.parseCommand "Save" of
+          Right (Lib3.SaveCommand, "") -> return ()
+          _ -> assertFailure "Failed to parse Save command",
+      
+      testCase "Parse Single Query Command" $ do
+        case Lib3.parseCommand "createMelody 1 A1 stop" of
+          Right (Lib3.StatementCommand (Lib3.Single _), "") -> return ()
+          _ -> assertFailure "Failed to parse single query command",
+      
+      testCase "Parse Batch Query Command" $ do
+        case Lib3.parseCommand "BEGIN createMelody 1 A1 stop; createMelody 2 B2 stop END" of
+          Right (Lib3.StatementCommand (Lib3.Batch _), "") -> return ()
+          _ -> assertFailure "Failed to parse batch query command"
     ]

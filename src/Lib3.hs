@@ -17,19 +17,21 @@ where
 import Control.Concurrent (Chan, newChan, readChan, writeChan)
 import Control.Concurrent.STM (STM, TVar, atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
 import Control.Monad (forever)
+import Control.Monad.Except (ExceptT (..), lift, runExceptT)
+import Control.Monad.Trans.Except (withExceptT)
+import qualified Control.Monad.Trans.State.Strict as State
 import Data.Char (isSpace)
-import Data.List (isInfixOf, isPrefixOf, isSuffixOf)
+import Data.List as L
 import qualified Lib2
 
 data StorageOp = Save String (Chan ()) | Load (Chan String)
 
--- | This function is started from main
--- in a dedicated thread. It must be used to control
--- file access in a synchronized manner: read requests
--- from chan, do the IO operations needed and respond
--- to a channel provided in a request.
--- Modify as needed.
--- StorageOp loop to handle file operations in a synchronized manner
+data Statements = Batch [Lib2.Query] | Single Lib2.Query deriving (Show, Eq)
+
+data Command = StatementCommand Statements | LoadCommand | SaveCommand deriving (Show, Eq)
+
+type Parser a = ExceptT String (State.State String) a
+
 storageOpLoop :: Chan StorageOp -> IO ()
 storageOpLoop ioChan = forever $ do
   op <- readChan ioChan
@@ -41,26 +43,47 @@ storageOpLoop ioChan = forever $ do
       content <- readFile "melody_state.txt"
       writeChan responseChan content
 
-data Statements
-  = Batch [Lib2.Query]
-  | Single Lib2.Query
-  deriving (Show, Eq)
-
-data Command
-  = StatementCommand Statements
-  | LoadCommand
-  | SaveCommand
-  deriving (Show, Eq)
-
--- Updated parse command to support new syntax and :paste
 parseCommand :: String -> Either String (Command, String)
-parseCommand input
-  | input == "save" = Right (SaveCommand, "")
-  | input == "load" = Right (LoadCommand, "")
-  | otherwise =
-      case parseStatements input of
-        Right (statements, remainder) -> Right (StatementCommand statements, remainder)
+parseCommand input =
+  let (result, remaining) = State.runState (runExceptT parseCommandParser) input
+   in case result of
         Left err -> Left err
+        Right command -> Right (command, remaining)
+
+parseCommandParser :: Parser Command
+parseCommandParser = do
+  input <- lift State.get
+  if "Load" `L.isPrefixOf` input
+    then do
+      lift $ State.put (drop (length "Load") input)
+      return LoadCommand
+    else
+      if "Save" `L.isPrefixOf` input
+        then do
+          lift $ State.put (drop (length "Save") input)
+          return SaveCommand
+        else do
+          (statements, remaining) <- parseStatementsParser
+          lift $ State.put remaining
+          return $ StatementCommand statements
+
+parseStatementsParser :: Parser (Statements, String)
+parseStatementsParser = do
+  input <- lift State.get
+  if "BEGIN" `L.isPrefixOf` input && "END" `L.isSuffixOf` input
+    then do
+      let body = extractBody input
+      queries <- traverse (withExceptT id . ExceptT . return . Lib2.parseQuery) body
+      return (Batch queries, "")
+    else do
+      query <- withExceptT id $ ExceptT $ return $ Lib2.parseQuery input
+      return (Single query, "")
+  where
+    extractBody :: String -> [String]
+    extractBody str =
+      let lines' = lines str
+          bodyLines = drop 1 . init $ lines'
+       in map (dropWhile (== ' ')) bodyLines
 
 -- Helper function to trim whitespace from both ends of a string
 trim :: String -> String
@@ -243,34 +266,3 @@ applyStatementsInner currentState (Batch queries) =
     )
     (Right ("", currentState))
     queries
-
--- monads -> it is a way to chain operations
-
--- functors -> leidzia funkcija applyinti ant kazkokios data kuri yra wrapped kazkokiam kontekste
--- fmap (+3) (Just 2)  -- Returns Just 5
--- (+3) <$> Just 2  -- taip pat veikia bet kitoks zymejimas
--- fmap (+3) Nothing   -- Returns Nothing
--- Functors allow you to apply functions to values while maintaining the original context or structure,
--- which is impossible with standard function application.
-
--- f1 <$> f2? -> tiesiog funkciju kompozicija, f1(f2(x))
-
--- applicatives -> wrappina ne tik value bet ir funkcija
--- kam noretum wrappinti funkcija? -> Using wrapped functions saves you time and effort when working with things that might fail,
--- have side effects, or represent multiple possibilities. They do the hard work of handling those situations for you.
-
--- pure keyword -> pavercia funkcija i applicative context (Maybe, IO, etc.) (idedi kazka i deze)
--- pure (+) <*> Just 2 <*> Just 3  -- Returns Just 5
--- pure (+) <*> Just 2 <*> Nothing  -- Returns Nothing
--- pure (+) <*> Nothing <*> Just 3  -- Returns Nothing
--- pure (+) <*> Nothing <*> Nothing  -- Returns Nothing
-
--- monads -> This is what makes monads powerful: they allow you to handle the context for each step without breaking the chain
--- some examples:
--- Just 3 >>= (\x -> Just (x + 2)) -- Result: Just 5
--- Nothing >>= (\x -> Just (x + 2)) -- Result: Nothing
-
--- [1, 2] >>= (\x -> [x, x + 10]) -- Result: [1,11,2,12]
-
--- getLine >>= (\name -> putStrLn ("Hello, " ++ name))
--- do syntax del paprastumo yra. tai tas pats kas >>=
